@@ -1,0 +1,1043 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jota Gestión Inmobiliaria</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Serif+Display&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<style>
+  :root {
+    --bg: #F7F5F0;
+    --surface: #FFFFFF;
+    --border: #E8E4DC;
+    --text: #1A1814;
+    --text-2: #6B6560;
+    --text-3: #A8A39C;
+    --accent: #C4973A;
+    --green: #3B6D11;
+    --green-bg: #EAF3DE;
+    --orange: #854F0B;
+    --orange-bg: #FAEEDA;
+    --blue: #185FA5;
+    --blue-bg: #E6F1FB;
+    --red: #A32D2D;
+    --red-bg: #FCEBEB;
+    --purple: #534AB7;
+    --purple-bg: #EEEDFE;
+    --radius: 10px;
+    --radius-sm: 6px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; font-size: 14px; }
+
+  /* Layout */
+  .layout { display: flex; min-height: 100vh; }
+  .sidebar { width: 220px; background: var(--surface); border-right: 1px solid var(--border); padding: 24px 0; position: fixed; top: 0; left: 0; height: 100vh; display: flex; flex-direction: column; z-index: 10; }
+  .sidebar-logo { padding: 0 20px 24px; border-bottom: 1px solid var(--border); }
+  .sidebar-logo h1 { font-family: 'DM Serif Display', serif; font-size: 18px; color: var(--text); line-height: 1.2; }
+  .sidebar-logo span { font-size: 11px; color: var(--text-3); letter-spacing: .5px; text-transform: uppercase; }
+  .sidebar-nav { padding: 16px 12px; flex: 1; }
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: var(--radius-sm); font-size: 13px; color: var(--text-2); cursor: pointer; transition: all .15s; margin-bottom: 2px; }
+  .nav-item:hover, .nav-item.active { background: var(--bg); color: var(--text); }
+  .nav-item.active { font-weight: 500; }
+  .nav-icon { width: 16px; text-align: center; }
+  .sidebar-footer { padding: 16px 20px; border-top: 1px solid var(--border); }
+  .db-status { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-3); }
+  .db-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
+  .db-dot.err { background: var(--red); }
+  .main { margin-left: 220px; padding: 32px; min-height: 100vh; }
+
+  /* Header */
+  .page-header { margin-bottom: 28px; }
+  .page-header h2 { font-family: 'DM Serif Display', serif; font-size: 26px; color: var(--text); margin-bottom: 4px; }
+  .page-header p { font-size: 13px; color: var(--text-3); }
+
+  /* Stats */
+  .stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 28px; }
+  .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; }
+  .stat-label { font-size: 11px; color: var(--text-3); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 6px; }
+  .stat-value { font-size: 26px; font-weight: 600; color: var(--text); }
+  .stat-value.green { color: var(--green); }
+  .stat-value.orange { color: var(--orange); }
+  .stat-value.blue { color: var(--blue); }
+  .stat-value.accent { font-size: 18px; color: var(--accent); }
+
+  /* Toolbar */
+  .toolbar { display: flex; gap: 10px; margin-bottom: 14px; align-items: center; }
+  .search-wrap { flex: 1; position: relative; }
+  .search-wrap input { width: 100%; padding: 9px 12px 9px 36px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); font-size: 13px; font-family: inherit; outline: none; transition: border-color .15s; }
+  .search-wrap input:focus { border-color: var(--accent); }
+  .search-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-3); font-size: 13px; }
+  .filter-select { padding: 9px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); font-size: 13px; font-family: inherit; cursor: pointer; outline: none; }
+  .btn-primary { padding: 9px 18px; background: var(--text); color: white; border: none; border-radius: var(--radius-sm); font-size: 13px; font-weight: 500; font-family: inherit; cursor: pointer; white-space: nowrap; transition: opacity .15s; }
+  .btn-primary:hover { opacity: .85; }
+
+  /* Table */
+  .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .count-line { font-size: 12px; color: var(--text-3); margin-bottom: 8px; }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  thead { background: var(--bg); }
+  th { padding: 10px 14px; text-align: left; font-size: 11px; font-weight: 500; color: var(--text-3); text-transform: uppercase; letter-spacing: .5px; border-bottom: 1px solid var(--border); }
+  td { padding: 12px 14px; border-bottom: 1px solid var(--border); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; font-size: 13px; }
+  tr:last-child td { border-bottom: none; }
+  tbody tr:hover td { background: var(--bg); cursor: pointer; }
+  .price-cell { font-weight: 600; }
+
+  /* Badges */
+  .badge { display: inline-block; padding: 3px 9px; border-radius: 20px; font-size: 11px; font-weight: 500; }
+  .b-Vacía { background: var(--green-bg); color: var(--green); }
+  .b-Alquilada { background: var(--orange-bg); color: var(--orange); }
+  .b-Habitada { background: var(--blue-bg); color: var(--blue); }
+  .b-Departamento { background: var(--purple-bg); color: var(--purple); }
+  .b-Casa { background: var(--blue-bg); color: var(--blue); }
+  .b-Cochera { background: var(--green-bg); color: var(--green); }
+  .b-Baulera { background: #F1EFE8; color: #5F5E5A; }
+  .b-Oficina { background: #FEF3E2; color: #92400E; }
+  .b-Otro { background: var(--red-bg); color: var(--red); }
+
+  /* Row actions */
+  .row-act { display: flex; gap: 6px; }
+  .btn-sm { padding: 4px 10px; font-size: 11px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: transparent; color: var(--text-2); cursor: pointer; font-family: inherit; transition: all .15s; }
+  .btn-sm:hover { background: var(--bg); color: var(--text); }
+  .btn-del:hover { background: var(--red-bg); color: var(--red); border-color: #F09595; }
+
+  /* Detail / Form panel */
+  .panel { position: fixed; top: 0; right: -100%; width: 480px; height: 100vh; background: var(--surface); border-left: 1px solid var(--border); z-index: 100; transition: right .25s ease; overflow-y: auto; display: flex; flex-direction: column; }
+  .panel.open { right: 0; }
+  .panel-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.2); z-index: 99; opacity: 0; pointer-events: none; transition: opacity .25s; }
+  .panel-overlay.open { opacity: 1; pointer-events: all; }
+  .panel-header { padding: 20px 24px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; background: var(--surface); z-index: 1; }
+  .panel-title { font-family: 'DM Serif Display', serif; font-size: 18px; }
+  .btn-close { padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: transparent; cursor: pointer; font-size: 16px; color: var(--text-2); }
+  .btn-close:hover { background: var(--bg); }
+  .panel-body { padding: 24px; flex: 1; }
+
+  /* Detail view */
+  .detail-price { font-family: 'DM Serif Display', serif; font-size: 28px; color: var(--text); margin-bottom: 4px; }
+  .detail-price small { font-family: 'DM Sans', sans-serif; font-size: 13px; color: var(--text-3); font-weight: 400; }
+  .detail-badges { display: flex; gap: 8px; margin: 12px 0 20px; }
+  .detail-address { font-size: 15px; font-weight: 500; margin-bottom: 4px; }
+  .detail-sub { font-size: 13px; color: var(--text-2); margin-bottom: 16px; }
+  .detail-divider { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+  .detail-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+  .dg { background: var(--bg); border-radius: var(--radius-sm); padding: 10px 12px; }
+  .dg-l { font-size: 10px; color: var(--text-3); text-transform: uppercase; letter-spacing: .4px; margin-bottom: 4px; }
+  .dg-v { font-size: 14px; font-weight: 500; }
+  .section-label { font-size: 11px; font-weight: 500; color: var(--text-3); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 10px; }
+  .obs-box { background: var(--bg); border-radius: var(--radius-sm); padding: 12px 14px; font-size: 13px; line-height: 1.7; color: var(--text-2); }
+  .inq-card { background: var(--bg); border-radius: var(--radius-sm); padding: 14px; }
+  .inq-name { font-weight: 600; margin-bottom: 8px; font-size: 14px; }
+  .inq-row { font-size: 13px; color: var(--text-2); margin-bottom: 4px; }
+  .detail-actions { display: flex; gap: 10px; padding: 20px 24px; border-top: 1px solid var(--border); background: var(--surface); position: sticky; bottom: 0; }
+  .btn-secondary { padding: 9px 16px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: transparent; color: var(--text); font-size: 13px; font-family: inherit; cursor: pointer; }
+  .btn-danger { padding: 9px 16px; border: 1px solid #F09595; border-radius: var(--radius-sm); background: transparent; color: var(--red); font-size: 13px; font-family: inherit; cursor: pointer; }
+  .btn-danger:hover { background: var(--red-bg); }
+
+  /* Form */
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .form-field { display: flex; flex-direction: column; gap: 5px; }
+  .form-field.full { grid-column: 1/-1; }
+  .form-field label { font-size: 11px; font-weight: 500; color: var(--text-3); text-transform: uppercase; letter-spacing: .4px; }
+  .form-field input, .form-field select, .form-field textarea { padding: 9px 11px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); font-size: 13px; font-family: inherit; outline: none; transition: border-color .15s; }
+  .form-field input:focus, .form-field select:focus, .form-field textarea:focus { border-color: var(--accent); }
+  .form-field textarea { resize: vertical; min-height: 70px; line-height: 1.6; }
+  .form-section { font-size: 11px; font-weight: 500; color: var(--text-3); text-transform: uppercase; letter-spacing: .4px; grid-column: 1/-1; padding-top: 6px; border-top: 1px solid var(--border); margin-top: 4px; }
+  .form-actions { display: flex; justify-content: flex-end; gap: 10px; padding: 20px 24px; border-top: 1px solid var(--border); background: var(--surface); position: sticky; bottom: 0; }
+
+  /* Loading / Empty */
+  .loading { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 300px; gap: 14px; color: var(--text-3); }
+  .spinner { width: 28px; height: 28px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .empty-state { text-align: center; padding: 60px 20px; color: var(--text-3); }
+  .empty-state p { font-size: 13px; margin-top: 8px; }
+
+  /* Alerts */
+  .alert-section { margin-bottom: 24px; }
+  .alert-section-title { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+  .alert-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; transition: background .15s; }
+  .alert-card:hover { background: var(--bg); }
+  .alert-card.urgent { border-left: 3px solid var(--red); }
+  .alert-card.warning { border-left: 3px solid var(--accent); }
+  .alert-info { flex: 1; }
+  .alert-dir { font-size: 13px; font-weight: 500; margin-bottom: 3px; }
+  .alert-meta { font-size: 12px; color: var(--text-2); }
+  .alert-days { text-align: right; }
+  .alert-days-num { font-size: 22px; font-weight: 600; }
+  .alert-days-num.urgent { color: var(--red); }
+  .alert-days-num.warning { color: var(--accent); }
+  .alert-days-label { font-size: 10px; color: var(--text-3); text-transform: uppercase; }
+  .no-alerts { text-align: center; padding: 60px 20px; color: var(--text-3); font-size: 14px; }
+  .no-alerts-icon { font-size: 40px; margin-bottom: 12px; }
+  .login-wrap { position: fixed; inset: 0; background: var(--bg); display: flex; align-items: center; justify-content: center; z-index: 999; }
+  .login-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 40px 36px; width: 340px; text-align: center; }
+  .login-logo { font-family: 'DM Serif Display', serif; font-size: 22px; color: var(--text); margin-bottom: 4px; }
+  .login-sub { font-size: 12px; color: var(--text-3); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 28px; }
+  .login-field { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 14px; font-family: inherit; background: var(--bg); color: var(--text); outline: none; margin-bottom: 12px; text-align: center; letter-spacing: 2px; }
+  .login-field:focus { border-color: var(--accent); }
+  .login-btn { width: 100%; padding: 11px; background: var(--text); color: white; border: none; border-radius: var(--radius-sm); font-size: 14px; font-weight: 500; font-family: inherit; cursor: pointer; transition: opacity .15s; }
+  .login-btn:hover { opacity: .85; }
+  .login-error { font-size: 12px; color: var(--red); margin-top: 8px; min-height: 18px; }
+</style>
+</head>
+<body>
+
+<!-- Login Screen -->
+<div class="login-wrap" id="login-wrap">
+  <div class="login-card">
+    <div class="login-logo">Jota Gestión<br>Inmobiliaria</div>
+    <div class="login-sub">Rosario</div>
+    <input class="login-field" type="password" id="pwd-input" placeholder="Contraseña" onkeydown="if(event.key==='Enter')checkPwd()">
+    <button class="login-btn" onclick="checkPwd()">Ingresar</button>
+    <div class="login-error" id="login-error"></div>
+  </div>
+</div>
+<div class="layout">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <h1>Jota Gestión<br>Inmobiliaria</h1>
+      <span>Rosario</span>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-item active" onclick="setView('propiedades')">
+        <span class="nav-icon">⊞</span> Propiedades
+      </div>
+      <div class="nav-item" onclick="setView('alquiladas')">
+        <span class="nav-icon">📋</span> Alquiladas
+      </div>
+      <div class="nav-item" onclick="setView('alertas')" id="nav-alertas">
+        <span class="nav-icon">🔔</span> Alertas <span id="alert-count" style="display:none;margin-left:auto;background:var(--red);color:white;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:600"></span>
+      </div>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="db-status">
+        <div class="db-dot" id="db-dot"></div>
+        <span id="db-label">Conectando...</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="main" id="main">
+    <div class="loading"><div class="spinner"></div><span>Cargando propiedades...</span></div>
+  </main>
+</div>
+
+<!-- Panel overlay -->
+<div class="panel-overlay" id="overlay" onclick="closePanel()"></div>
+
+<!-- Side Panel -->
+<div class="panel" id="panel">
+  <div id="panel-content"></div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+const SUPA_URL = "https://ombrbobzmiedicapfmqw.supabase.co";
+const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9tYnJib2J6bWllZGljYXBmbXF3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwMzAxOTMsImV4cCI6MjA5MjYwNjE5M30.MmoRaU1a2BqcOV7e8V1QVEh5JlL5bPEBFRO-XmfCels";
+
+const TIPOS = ["Departamento","Casa","Cochera","Baulera","Oficina","Otro"];
+const SITS = ["Vacía","Alquilada","Habitada"];
+const BARRIOS = ["Centro","República de la Sexta","Fisherton","España y Hospitales","Alberdi","Belgrano","Florida","Lourdes","Macrocentro","Pichincha","Puerto Norte","Sarmiento","Otro"];
+
+let db, props = [], search = "", fTipo = "", fSit = "", currentView = "propiedades";
+let panelMode = null, panelId = null, form = {};
+
+const SEED = [
+  {tipo:"Departamento",barrio:"Centro",direccion:"Balcarce bis 45, P2 Dto A",precio:75000,moneda:"USD",expensas:100000,sup_total:38,sup_cubierta:38,sup_terreno:0,ambientes:1,dormitorios:0,baños:1,antiguedad:"9 años",condicion:"Excelente",disposicion:"Frente",situacion:"Vacía",apto_credito:"Sí",fin_permuta:"",alquilado:false,ini_contrato:"",fin_contrato:"",alq_mensual:0,ajuste:"",observaciones:"Monoambiente premium. AA individual, piso flotante, placard, balcón. Amenities: pileta, solarium, parrilla, quincho, gimnasio",inquilino:"",telefono:"",mail:"",valor_inicial:0},
+  {tipo:"Departamento",barrio:"Centro",direccion:"Jujuy 1515, P7 Dto 3",precio:92000,moneda:"USD",expensas:58000,sup_total:40.5,sup_cubierta:37,sup_terreno:0,ambientes:2,dormitorios:1,baños:1,antiguedad:"6 años",condicion:"Excelente",disposicion:"Contrafrente",situacion:"Vacía",apto_credito:"Sí",fin_permuta:"",alquilado:false,ini_contrato:"",fin_contrato:"",alq_mensual:0,ajuste:"",observaciones:"1 dormitorio, balcón amplio, terraza con solarium/quincho/parrillero. AA split, luminarias, gas",inquilino:"",telefono:"",mail:"",valor_inicial:0},
+  {tipo:"Cochera",barrio:"Centro",direccion:"Entre Ríos 637 - Cochera 4",precio:21000,moneda:"USD",expensas:18000,sup_total:12,sup_cubierta:12,sup_terreno:0,ambientes:0,dormitorios:0,baños:0,antiguedad:"A estrenar",condicion:"",disposicion:"",situacion:"Vacía",apto_credito:"",fin_permuta:"Sí - permuta inmuebles/vehículos",alquilado:false,ini_contrato:"",fin_contrato:"",alq_mensual:0,ajuste:"",observaciones:"Cochera fija. Portón eléctrico, control electrónico. Financiación disponible",inquilino:"",telefono:"",mail:"",valor_inicial:0},
+  {tipo:"Cochera",barrio:"Centro",direccion:"9 de Julio 2233 - Cochera 3",precio:20000,moneda:"USD",expensas:52000,sup_total:12,sup_cubierta:12,sup_terreno:0,ambientes:0,dormitorios:0,baños:0,antiguedad:"A estrenar",condicion:"",disposicion:"",situacion:"Vacía",apto_credito:"",fin_permuta:"Sí - permuta inmuebles/vehículos",alquilado:false,ini_contrato:"",fin_contrato:"",alq_mensual:0,ajuste:"",observaciones:"Cochera fija. Portón eléctrico, control electrónico. Financiación disponible",inquilino:"",telefono:"",mail:"",valor_inicial:0},
+  {tipo:"Cochera",barrio:"República de la Sexta",direccion:"Ituzaingó 654",precio:21810,moneda:"USD",expensas:16000,sup_total:12,sup_cubierta:12,sup_terreno:0,ambientes:0,dormitorios:0,baños:0,antiguedad:"A estrenar",condicion:"",disposicion:"",situacion:"Vacía",apto_credito:"",fin_permuta:"",alquilado:false,ini_contrato:"",fin_contrato:"",alq_mensual:0,ajuste:"",observaciones:"Cochera individual. Portón automático control remoto, reconocimiento facial, cámaras de seguridad",inquilino:"",telefono:"",mail:"",valor_inicial:0},
+  {tipo:"Departamento",barrio:"República de la Sexta",direccion:"Ituzaingó 654, P7 Dto 2",precio:290000,moneda:"USD",expensas:220000,sup_total:198.49,sup_cubierta:88.65,sup_terreno:0,ambientes:5,dormitorios:3,baños:2,antiguedad:"3 años",condicion:"Excelente",disposicion:"Frente",situacion:"Alquilada",apto_credito:"",fin_permuta:"",alquilado:true,ini_contrato:"28/05/2025",fin_contrato:"27/05/2027",alq_mensual:1673075,ajuste:"Cuatrimestral ICL",observaciones:"Cochera fija, pileta, hidromasaje, solarium, parrilla, quincho, gimnasio, AA individual, calefacción radiadores",inquilino:"Agustina Piermattei",telefono:"341392058",mail:"aguspiermattei1@gmail.com",valor_inicial:1400000},
+  {tipo:"Departamento",barrio:"República de la Sexta",direccion:"Ituzaingó 654, P7 Dto 1",precio:290000,moneda:"USD",expensas:220000,sup_total:197.75,sup_cubierta:88,sup_terreno:0,ambientes:5,dormitorios:3,baños:2,antiguedad:"A estrenar",condicion:"Excelente",disposicion:"Contrafrente",situacion:"Vacía",apto_credito:"",fin_permuta:"",alquilado:false,ini_contrato:"",fin_contrato:"",alq_mensual:0,ajuste:"",observaciones:"En construcción. Cochera subterránea, pileta, hidromasaje, solarium, parrilla, quincho, gimnasio, calefacción central",inquilino:"",telefono:"",mail:"",valor_inicial:0},
+  {tipo:"Departamento",barrio:"República de la Sexta",direccion:"Ituzaingó 654, P7 Dto 4",precio:220000,moneda:"USD",expensas:190000,sup_total:174.16,sup_cubierta:75.81,sup_terreno:0,ambientes:4,dormitorios:2,baños:1,antiguedad:"A estrenar",condicion:"Excelente",disposicion:"Frente",situacion:"Alquilada",apto_credito:"",fin_permuta:"",alquilado:true,ini_contrato:"04/08/2025",fin_contrato:"03/08/2027",alq_mensual:1290210,ajuste:"Cuatrimestral ICL",observaciones:"Cochera fija, pileta, hidromasaje, solarium, parrilla, quincho, gimnasio, AA individual, calefacción radiadores",inquilino:"Leandro Cargnelli",telefono:"3415312986",mail:"leocargnelli@gmail.com",valor_inicial:1100000},
+  {tipo:"Departamento",barrio:"República de la Sexta",direccion:"Ituzaingó 654, P3 Dto 3",precio:179000,moneda:"USD",expensas:158500,sup_total:88.67,sup_cubierta:88.67,sup_terreno:0,ambientes:3,dormitorios:2,baños:2,antiguedad:"A estrenar",condicion:"Excelente",disposicion:"Contrafrente",situacion:"Alquilada",apto_credito:"",fin_permuta:"",alquilado:true,ini_contrato:"02/06/2025",fin_contrato:"01/06/2027",alq_mensual:893750,ajuste:"Cuatrimestral ICL",observaciones:"Loft moderno. Cochera fija, pileta, hidromasaje, solarium, parrilla, quincho, gimnasio, reconocimiento facial",inquilino:"Grapsas Irini",telefono:"3412698173",mail:"grapsas99@gmail.com",valor_inicial:750000},
+  {tipo:"Departamento",barrio:"República de la Sexta",direccion:"Ituzaingó 654, P3 Dto 4",precio:187000,moneda:"USD",expensas:173800,sup_total:95.9,sup_cubierta:95.9,sup_terreno:0,ambientes:3,dormitorios:2,baños:2,antiguedad:"A estrenar",condicion:"Excelente",disposicion:"Contrafrente",situacion:"Alquilada",apto_credito:"",fin_permuta:"",alquilado:true,ini_contrato:"15/04/2025",fin_contrato:"14/04/2027",alq_mensual:571758,ajuste:"Cuatrimestral ICL",observaciones:"Loft moderno. Cochera fija, pileta, solarium, parrilla, quincho, gimnasio, reconocimiento facial, huella digital",inquilino:"Juan Palmitesta",telefono:"3412030489",mail:"palmitestaj@gmail.com",valor_inicial:430000},
+  {tipo:"Casa",barrio:"Otro",direccion:"Larrea 604 - San José de la Esquina",precio:140000,moneda:"USD",expensas:0,sup_total:248,sup_cubierta:0,sup_terreno:360,ambientes:10,dormitorios:4,baños:2,antiguedad:"45 años",condicion:"Excelente",disposicion:"",situacion:"Habitada",apto_credito:"Sí",fin_permuta:"",alquilado:false,ini_contrato:"",fin_contrato:"",alq_mensual:0,ajuste:"",observaciones:"Amoblada. Pileta, parrilla, quincho, cochera fija, AA individual, apto mascotas. Diseño moderno industrial chic",inquilino:"",telefono:"",mail:"",valor_inicial:0},
+  {tipo:"Departamento",barrio:"República de la Sexta",direccion:"Ituzaingó 654, P4 Dto 5",precio:147000,moneda:"USD",expensas:129000,sup_total:72.26,sup_cubierta:72.26,sup_terreno:0,ambientes:3,dormitorios:2,baños:1,antiguedad:"3 años",condicion:"Excelente",disposicion:"Frente",situacion:"Alquilada",apto_credito:"",fin_permuta:"",alquilado:true,ini_contrato:"25/04/2025",fin_contrato:"24/04/2027",alq_mensual:836932,ajuste:"Cuatrimestral ICL",observaciones:"Cochera subterránea, pileta, hidromasaje, solarium, parrilla, quincho, gimnasio, AA individual",inquilino:"Noralí Tejeira",telefono:"3413220015",mail:"noralitejeira@hotmail.com",valor_inicial:630000},
+  {tipo:"Departamento",barrio:"República de la Sexta",direccion:"Ituzaingó 654, P3 Dto 2",precio:187000,moneda:"USD",expensas:173800,sup_total:95.9,sup_cubierta:95.9,sup_terreno:0,ambientes:3,dormitorios:2,baños:2,antiguedad:"A estrenar",condicion:"Excelente",disposicion:"Contrafrente",situacion:"Vacía",apto_credito:"",fin_permuta:"",alquilado:false,ini_contrato:"",fin_contrato:"",alq_mensual:0,ajuste:"",observaciones:"Loft moderno 95,9m². Cochera fija, pileta, solarium, parrilla, quincho, gimnasio, reconocimiento facial",inquilino:"",telefono:"",mail:"",valor_inicial:0},
+  {tipo:"Casa",barrio:"España y Hospitales",direccion:"Amenábar 1941",precio:92000,moneda:"USD",expensas:0,sup_total:95,sup_cubierta:0,sup_terreno:145,ambientes:6,dormitorios:2,baños:1,antiguedad:"54 años",condicion:"Muy bueno",disposicion:"",situacion:"Vacía",apto_credito:"Sí",fin_permuta:"",alquilado:false,ini_contrato:"",fin_contrato:"",alq_mensual:0,ajuste:"",observaciones:"Casa reciclada. Patio, jardín, calefacción por gas, luminoso",inquilino:"",telefono:"",mail:"",valor_inicial:0},
+  {tipo:"Casa",barrio:"Fisherton",direccion:"San José de Calasanz 9585",precio:450000,moneda:"USD",expensas:450000,sup_total:263,sup_cubierta:175,sup_terreno:830,ambientes:5,dormitorios:3,baños:2,antiguedad:"A estrenar",condicion:"Excelente",disposicion:"",situacion:"Vacía",apto_credito:"",fin_permuta:"",alquilado:false,ini_contrato:"",fin_contrato:"",alq_mensual:0,ajuste:"",observaciones:"Barrio cerrado Los Pasos. Pileta, parrilla, quincho, cochera fija, AA, calefacción central, seguridad 24hs, riego automático",inquilino:"",telefono:"",mail:"",valor_inicial:0},
+  {tipo:"Departamento",barrio:"República de la Sexta",direccion:"Ituzaingó 654, P4 Dto 3",precio:147000,moneda:"USD",expensas:150000,sup_total:72.26,sup_cubierta:72.26,sup_terreno:0,ambientes:3,dormitorios:2,baños:1,antiguedad:"A estrenar",condicion:"Excelente",disposicion:"Frente",situacion:"Vacía",apto_credito:"",fin_permuta:"",alquilado:false,ini_contrato:"",fin_contrato:"",alq_mensual:0,ajuste:"",observaciones:"1 dorm + comodín, balcón terraza. Cochera subterránea, pileta, hidromasaje, solarium, parrilla, quincho, gimnasio",inquilino:"",telefono:"",mail:"",valor_inicial:0},
+  {tipo:"Baulera",barrio:"República de la Sexta",direccion:"Ituzaingó 654 - Baulera 1",precio:5625,moneda:"USD",expensas:3800,sup_total:3.75,sup_cubierta:3.75,sup_terreno:0,ambientes:0,dormitorios:0,baños:0,antiguedad:"A estrenar",condicion:"",disposicion:"",situacion:"Vacía",apto_credito:"",fin_permuta:"",alquilado:false,ini_contrato:"",fin_contrato:"",alq_mensual:0,ajuste:"",observaciones:"Baulera en subsuelo. Estructura metálica, cerradura propia, piso hormigón",inquilino:"",telefono:"",mail:"",valor_inicial:0},
+  {tipo:"Baulera",barrio:"República de la Sexta",direccion:"Ituzaingó 654 - Baulera 2",precio:4275,moneda:"USD",expensas:2500,sup_total:2.85,sup_cubierta:2.85,sup_terreno:0,ambientes:0,dormitorios:0,baños:0,antiguedad:"A estrenar",condicion:"",disposicion:"",situacion:"Vacía",apto_credito:"",fin_permuta:"",alquilado:false,ini_contrato:"",fin_contrato:"",alq_mensual:0,ajuste:"",observaciones:"Baulera en subsuelo. Estructura metálica, cerradura propia, piso hormigón",inquilino:"",telefono:"",mail:"",valor_inicial:0},
+  {tipo:"Baulera",barrio:"República de la Sexta",direccion:"Ituzaingó 654 - Baulera 7",precio:8550,moneda:"USD",expensas:6500,sup_total:5.7,sup_cubierta:5.7,sup_terreno:0,ambientes:0,dormitorios:0,baños:0,antiguedad:"A estrenar",condicion:"",disposicion:"",situacion:"Vacía",apto_credito:"",fin_permuta:"",alquilado:false,ini_contrato:"",fin_contrato:"",alq_mensual:0,ajuste:"",observaciones:"Baulera en subsuelo. Estructura metálica, cerradura propia, piso hormigón",inquilino:"",telefono:"",mail:"",valor_inicial:0},
+  {tipo:"Baulera",barrio:"República de la Sexta",direccion:"Ituzaingó 654 - Baulera 9",precio:7500,moneda:"USD",expensas:6500,sup_total:5,sup_cubierta:5,sup_terreno:0,ambientes:0,dormitorios:0,baños:0,antiguedad:"A estrenar",condicion:"",disposicion:"",situacion:"Vacía",apto_credito:"",fin_permuta:"",alquilado:false,ini_contrato:"",fin_contrato:"",alq_mensual:0,ajuste:"",observaciones:"Baulera en subsuelo. Estructura metálica, cerradura propia, piso hormigón",inquilino:"",telefono:"",mail:"",valor_inicial:0},
+  {tipo:"Cochera",barrio:"República de la Sexta",direccion:"Ituzaingó 654 - Cochera 3",precio:21810,moneda:"USD",expensas:16000,sup_total:12,sup_cubierta:12,sup_terreno:0,ambientes:0,dormitorios:0,baños:0,antiguedad:"A estrenar",condicion:"",disposicion:"",situacion:"Vacía",apto_credito:"",fin_permuta:"",alquilado:false,ini_contrato:"",fin_contrato:"",alq_mensual:0,ajuste:"",observaciones:"Cochera fija. Portón automático control remoto, reconocimiento facial, cámaras de seguridad",inquilino:"",telefono:"",mail:"",valor_inicial:0},
+  {tipo:"Cochera",barrio:"República de la Sexta",direccion:"Ituzaingó 654 - Cochera 4",precio:21810,moneda:"USD",expensas:16000,sup_total:12,sup_cubierta:12,sup_terreno:0,ambientes:0,dormitorios:0,baños:0,antiguedad:"A estrenar",condicion:"",disposicion:"",situacion:"Vacía",apto_credito:"",fin_permuta:"",alquilado:false,ini_contrato:"",fin_contrato:"",alq_mensual:0,ajuste:"",observaciones:"Cochera fija. Portón automático control remoto, reconocimiento facial, cámaras de seguridad",inquilino:"",telefono:"",mail:"",valor_inicial:0},
+  {tipo:"Cochera",barrio:"República de la Sexta",direccion:"Ituzaingó 654 - Cochera 6",precio:21810,moneda:"USD",expensas:16000,sup_total:12,sup_cubierta:12,sup_terreno:0,ambientes:0,dormitorios:0,baños:0,antiguedad:"A estrenar",condicion:"",disposicion:"",situacion:"Vacía",apto_credito:"",fin_permuta:"",alquilado:false,ini_contrato:"",fin_contrato:"",alq_mensual:0,ajuste:"",observaciones:"Cochera fija. Portón automático control remoto, reconocimiento facial, cámaras de seguridad",inquilino:"",telefono:"",mail:"",valor_inicial:0},
+  {tipo:"Cochera",barrio:"República de la Sexta",direccion:"Ituzaingó 654 - Cochera 7",precio:21810,moneda:"USD",expensas:16000,sup_total:12,sup_cubierta:12,sup_terreno:0,ambientes:0,dormitorios:0,baños:0,antiguedad:"A estrenar",condicion:"",disposicion:"",situacion:"Vacía",apto_credito:"",fin_permuta:"",alquilado:false,ini_contrato:"",fin_contrato:"",alq_mensual:0,ajuste:"",observaciones:"Cochera fija. Portón automático control remoto, reconocimiento facial, cámaras de seguridad",inquilino:"",telefono:"",mail:"",valor_inicial:0},
+  {tipo:"Cochera",barrio:"República de la Sexta",direccion:"Ituzaingó 654 - Cochera 22",precio:21810,moneda:"USD",expensas:16000,sup_total:12,sup_cubierta:12,sup_terreno:0,ambientes:0,dormitorios:0,baños:0,antiguedad:"A estrenar",condicion:"",disposicion:"",situacion:"Vacía",apto_credito:"",fin_permuta:"",alquilado:false,ini_contrato:"",fin_contrato:"",alq_mensual:0,ajuste:"",observaciones:"Cochera fija. Portón automático control remoto, reconocimiento facial, cámaras de seguridad",inquilino:"",telefono:"",mail:"",valor_inicial:0},
+  {tipo:"Cochera",barrio:"República de la Sexta",direccion:"Ituzaingó 654 - Cochera 23",precio:21810,moneda:"USD",expensas:16000,sup_total:12,sup_cubierta:12,sup_terreno:0,ambientes:0,dormitorios:0,baños:0,antiguedad:"A estrenar",condicion:"",disposicion:"",situacion:"Vacía",apto_credito:"",fin_permuta:"",alquilado:false,ini_contrato:"",fin_contrato:"",alq_mensual:0,ajuste:"",observaciones:"Cochera fija. Portón automático control remoto, reconocimiento facial, cámaras de seguridad",inquilino:"",telefono:"",mail:"",valor_inicial:0}
+];
+
+function fmt(n){ return "USD " + Number(n).toLocaleString("es-AR"); }
+function fmtARS(n){ return n > 0 ? "$" + Number(n).toLocaleString("es-AR") : "—"; }
+function showToast(m){ const t = document.getElementById("toast"); t.textContent = m; t.classList.add("show"); setTimeout(() => t.classList.remove("show"), 2200); }
+function emptyForm(){ return {tipo:"Departamento",barrio:"Centro",direccion:"",precio:"",moneda:"USD",expensas:"",sup_total:"",sup_cubierta:"",sup_terreno:"",ambientes:"",dormitorios:"",baños:"",antiguedad:"",condicion:"",disposicion:"",situacion:"Vacía",apto_credito:"",fin_permuta:"",alquilado:false,ini_contrato:"",fin_contrato:"",alq_mensual:"",ajuste:"",observaciones:"",inquilino:"",telefono:"",mail:"",valor_inicial:"",propietario:"",tel_propietario:"",mail_propietario:""}; }
+
+async function fetchICL(){
+  try {
+    // BCRA API - Variable 14 = ICL (Índice para Contratos de Locación)
+    const res = await fetch("https://api.bcra.gob.ar/estadisticas/v3.0/monetarias/14/datos?limit=2", {
+      headers: {"Accept": "application/json"}
+    });
+    if(!res.ok) throw new Error("Sin respuesta");
+    const data = await res.json();
+    const registros = data.results || data.data || [];
+    if(registros.length < 2) throw new Error("Datos insuficientes");
+    // El ICL acumulado: valor actual / valor anterior
+    const ultimo = registros[0].valor || registros[0].v;
+    const anterior = registros[1].valor || registros[1].v;
+    return { icl: (ultimo / anterior), fecha: registros[0].fecha || registros[0].d, raw: { ultimo, anterior } };
+  } catch(e) {
+    return null;
+  }
+}
+
+function getAjustesHoy(){
+  const hoy = new Date();
+  const dd = String(hoy.getDate()).padStart(2,"0");
+  const mm = String(hoy.getMonth()+1).padStart(2,"0");
+  return props.filter(p => {
+    if(!p.alquilado || !p.ajuste || !p.ini_contrato) return false;
+    const ajuste = p.ajuste.toLowerCase();
+    if(!ajuste.includes("icl") && !ajuste.includes("cuatrimestral") && !ajuste.includes("trimestral") && !ajuste.includes("semestral")) return false;
+    // Verificar si hoy corresponde ajuste basado en mes de inicio
+    const [dIni, mIni] = p.ini_contrato.split("/");
+    const diaAjuste = dIni;
+    if(dd !== diaAjuste) return false;
+    const mesActual = hoy.getMonth()+1;
+    const mesInicio = parseInt(mIni);
+    const diff = (mesActual - mesInicio + 12) % 12;
+    if(ajuste.includes("cuatrimestral")) return diff % 4 === 0 && diff > 0;
+    if(ajuste.includes("trimestral")) return diff % 3 === 0 && diff > 0;
+    if(ajuste.includes("semestral")) return diff % 6 === 0 && diff > 0;
+    return false;
+  });
+}
+
+async function checkAjustesAutomaticos(){
+  const ajustesHoy = getAjustesHoy();
+  if(ajustesHoy.length === 0) return;
+
+  const iclData = await fetchICL();
+  const iclValor = iclData?.icl;
+  const iclFecha = iclData?.fecha || "último disponible";
+
+  // Mostrar modal de confirmación
+  const modal = document.createElement("div");
+  modal.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:999";
+  
+  const tarjetas = ajustesHoy.map(p => {
+    const nuevoValor = iclValor ? Math.round(p.alq_mensual * iclValor) : null;
+    return `<div style="background:var(--bg);border-radius:8px;padding:12px 14px;margin-bottom:8px">
+      <div style="font-size:13px;font-weight:500;margin-bottom:4px">${p.direccion}</div>
+      <div style="font-size:12px;color:var(--text-2)">Actual: $${Number(p.alq_mensual).toLocaleString("es-AR")}</div>
+      ${nuevoValor ? `<div style="font-size:13px;font-weight:600;color:var(--green);margin-top:3px">→ Nuevo: $${nuevoValor.toLocaleString("es-AR")} <span style="font-size:11px;color:var(--text-3)">(ICL ${iclValor.toFixed(4)})</span></div>` : 
+      `<div style="font-size:12px;color:var(--orange);margin-top:3px">⚠️ No se pudo obtener el ICL del BCRA</div>`}
+    </div>`;
+  }).join("");
+
+  modal.innerHTML = `
+    <div style="background:var(--surface);border-radius:12px;padding:24px;width:440px;max-height:80vh;overflow-y:auto;border:1px solid var(--border)">
+      <div style="font-size:16px;font-weight:500;margin-bottom:4px">🔔 Ajustes de alquiler hoy</div>
+      <div style="font-size:12px;color:var(--text-3);margin-bottom:16px">Fuente: BCRA oficial · <a href="https://www.bcra.gob.ar/PublicacionesEstadisticas/Principales_variables_datos.asp?serie=14&detalle=%CDndice+para+Contratos+de+Locaci%F3n+(ICL)" target="_blank" style="color:var(--accent)">Ver ICL en BCRA</a></div>
+      ${tarjetas}
+      <div style="margin-top:14px;margin-bottom:14px">
+        <label style="font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:6px">Ingresá el valor ICL del día</label>
+        <div style="display:flex;gap:8px">
+          <input id="icl-manual" type="number" step="0.0001" placeholder="Ej: 1.0342" style="flex:1;padding:9px 11px;border:1px solid var(--border);border-radius:8px;font-size:14px;font-family:inherit;background:var(--bg)" oninput="previewICL(${JSON.stringify(ajustesHoy.map(p=>({id:p.id,alq:p.alq_mensual})))})">
+          <button onclick="previewICL(${JSON.stringify(ajustesHoy.map(p=>({id:p.id,alq:p.alq_mensual})))})" style="padding:9px 14px;border:1px solid var(--border);border-radius:8px;background:var(--bg);font-size:13px;cursor:pointer;font-family:inherit">Calcular</button>
+        </div>
+        <div id="icl-preview" style="margin-top:10px"></div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:4px">
+        <button onclick="this.closest('div[style*=fixed]').remove()" style="flex:1;padding:10px;border:1px solid var(--border);border-radius:8px;background:transparent;font-size:13px;cursor:pointer;font-family:inherit">Cancelar</button>
+        <button id="btn-aplicar-icl" onclick="aplicarICLManual(${JSON.stringify(ajustesHoy.map(p=>p.id))})" disabled style="flex:1;padding:10px;background:var(--text);color:white;border:none;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;font-family:inherit;opacity:.4">Aplicar todos</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+}
+
+function previewICL(propData){
+  const icl = parseFloat(document.getElementById("icl-manual")?.value);
+  const preview = document.getElementById("icl-preview");
+  const btn = document.getElementById("btn-aplicar-icl");
+  if(!icl || icl <= 0){
+    if(preview) preview.innerHTML = "";
+    if(btn){ btn.disabled = true; btn.style.opacity = ".4"; }
+    return;
+  }
+  const html = propData.map(p => {
+    const nuevo = Math.round(p.alq * icl);
+    const diff = nuevo - p.alq;
+    return `<div style="background:var(--bg);border-radius:6px;padding:9px 12px;margin-bottom:6px;font-size:12px">
+      <span style="color:var(--text-2)">$${Number(p.alq).toLocaleString("es-AR")}</span>
+      <span style="margin:0 6px;color:var(--text-3)">→</span>
+      <strong style="color:var(--green)">$${nuevo.toLocaleString("es-AR")}</strong>
+      <span style="color:var(--text-3);margin-left:6px">(+$${diff.toLocaleString("es-AR")})</span>
+    </div>`;
+  }).join("");
+  if(preview) preview.innerHTML = html;
+  if(btn){ btn.disabled = false; btn.style.opacity = "1"; btn.dataset.icl = icl; }
+}
+
+async function aplicarICLManual(ids){
+  const btn = document.getElementById("btn-aplicar-icl");
+  const icl = parseFloat(btn?.dataset.icl);
+  if(!icl) return;
+  if(!confirm(`¿Aplicar ajuste ICL ${icl} a ${ids.length} propiedad${ids.length!==1?"es":""}?`)) return;
+  document.querySelector("div[style*='position:fixed'][style*='z-index:999']")?.remove();
+  await aplicarTodosAjustes(ids, icl);
+}
+
+async function aplicarTodosAjustes(ids, icl){
+  document.querySelector("div[style*='position:fixed'][style*='z-index:999']")?.remove();
+  let aplicados = 0;
+  for(const id of ids){
+    const p = props.find(x => x.id === id);
+    if(!p) continue;
+    const nuevoValor = Math.round(p.alq_mensual * icl);
+    await db.from("propiedades").update({alq_mensual: nuevoValor}).eq("id", id);
+    await db.from("historial_precios").insert({
+      propiedad_id: id, tipo_precio: "alquiler",
+      valor_anterior: p.alq_mensual, valor_nuevo: nuevoValor
+    });
+    aplicados++;
+  }
+  const { data: fresh } = await db.from("propiedades").select("*").order("id");
+  if(fresh) props = fresh;
+  showToast(`${aplicados} alquiler${aplicados!==1?"es":""} actualizado${aplicados!==1?"s":""} ✓`);
+  renderMain();
+}
+
+async function init(){
+  db = supabase.createClient(SUPA_URL, SUPA_KEY);
+  try {
+    const { data, error } = await db.from("propiedades").select("*").order("id");
+    if(error) throw error;
+    if(data.length === 0){
+      document.getElementById("main").innerHTML = '<div class="loading"><div class="spinner"></div><span>Cargando 26 propiedades por primera vez...</span></div>';
+      const { error: e2 } = await db.from("propiedades").insert(SEED);
+      if(e2) throw e2;
+      const { data: d2 } = await db.from("propiedades").select("*").order("id");
+      props = d2;
+    } else { props = data; }
+    document.getElementById("db-dot").className = "db-dot";
+    document.getElementById("db-label").textContent = "Supabase conectado";
+    updateAlertBadge();
+    renderMain();
+    checkAjustesAutomaticos();
+  } catch(e) {
+    document.getElementById("db-dot").className = "db-dot err";
+    document.getElementById("db-label").textContent = "Error de conexión";
+    document.getElementById("main").innerHTML = `<div class="loading"><span style="color:var(--red)">❌ ${e.message}</span></div>`;
+  }
+}
+
+function setView(v){
+  currentView = v;
+  document.querySelectorAll(".nav-item").forEach(el => el.classList.remove("active"));
+  event.target.closest(".nav-item").classList.add("active");
+  if(v === "alertas"){
+    document.getElementById("main").innerHTML = renderAlertas();
+  } else {
+    renderMain();
+  }
+}
+
+const SIT_ORDER = {"Vacía":0,"Habitada":1,"Alquilada":2};
+
+function parseFecha(str){
+  if(!str) return Infinity;
+  const parts = str.split("/");
+  if(parts.length !== 3) return Infinity;
+  return new Date(`${parts[2]}-${parts[1]}-${parts[0]}`).getTime() || Infinity;
+}
+
+function filtered(){
+  let list = currentView === "alquiladas" ? props.filter(p => p.alquilado) : props;
+  return list.filter(p => {
+    const s = search.toLowerCase();
+    const ms = !s || (p.direccion + p.barrio + (p.inquilino||"") + (p.observaciones||"")).toLowerCase().includes(s);
+    return ms && (!fTipo || p.tipo === fTipo) && (!fSit || p.situacion === fSit);
+  }).sort((a,b) => {
+    const sitDiff = (SIT_ORDER[a.situacion]??9) - (SIT_ORDER[b.situacion]??9);
+    if(sitDiff !== 0) return sitDiff;
+    return parseFecha(a.fin_contrato) - parseFecha(b.fin_contrato);
+  });
+}
+
+function getAlertas(){
+  const now = Date.now();
+  const day = 86400000;
+  return props
+    .filter(p => p.alquilado && p.fin_contrato)
+    .map(p => {
+      const fin = parseFecha(p.fin_contrato);
+      const dias = Math.round((fin - now) / day);
+      return {...p, diasRestantes: dias};
+    })
+    .filter(p => p.diasRestantes <= 60 && p.diasRestantes >= 0)
+    .sort((a,b) => a.diasRestantes - b.diasRestantes);
+}
+
+function updateAlertBadge(){
+  const alertas = getAlertas();
+  const badge = document.getElementById("alert-count");
+  if(!badge) return;
+  if(alertas.length > 0){
+    badge.textContent = alertas.length;
+    badge.style.display = "inline";
+  } else {
+    badge.style.display = "none";
+  }
+}
+
+function renderAlertas(){
+  const alertas = getAlertas();
+  const urgentes = alertas.filter(p => p.diasRestantes <= 30);
+  const advertencias = alertas.filter(p => p.diasRestantes > 30);
+
+  if(alertas.length === 0){
+    return `<div class="app">
+      <div class="page-header">
+        <h2>Alertas de Vencimiento</h2>
+        <p>Contratos que vencen en los próximos 60 días</p>
+      </div>
+      <div class="no-alerts">
+        <div class="no-alerts-icon">✅</div>
+        <div>No hay contratos por vencer en los próximos 60 días</div>
+      </div>
+    </div>`;
+  }
+
+  const renderCards = (list, tipo) => list.map(p => `
+    <div class="alert-card ${tipo}" onclick="openDetail(${p.id})">
+      <div class="alert-info">
+        <div class="alert-dir">${p.direccion}</div>
+        <div class="alert-meta">${p.inquilino} · Vence el ${p.fin_contrato} · ${fmtARS(p.alq_mensual)}/mes</div>
+      </div>
+      <div class="alert-days">
+        <div class="alert-days-num ${tipo}">${p.diasRestantes}</div>
+        <div class="alert-days-label">días</div>
+      </div>
+    </div>`).join("");
+
+  return `<div class="app">
+    <div class="page-header">
+      <h2>Alertas de Vencimiento</h2>
+      <p>Contratos que vencen en los próximos 60 días</p>
+    </div>
+    ${urgentes.length > 0 ? `
+    <div class="alert-section">
+      <div class="alert-section-title" style="color:var(--red)">🔴 Vencen en menos de 30 días (${urgentes.length})</div>
+      ${renderCards(urgentes, "urgent")}
+    </div>` : ""}
+    ${advertencias.length > 0 ? `
+    <div class="alert-section">
+      <div class="alert-section-title" style="color:var(--accent)">🟡 Vencen entre 30 y 60 días (${advertencias.length})</div>
+      ${renderCards(advertencias, "warning")}
+    </div>` : ""}
+  </div>`;
+}
+
+function renderMain(){
+  const vac = props.filter(p => p.situacion === "Vacía").length;
+  const alq = props.filter(p => p.situacion === "Alquilada").length;
+  const hab = props.filter(p => p.situacion === "Habitada").length;
+  const ingresos = props.filter(p => p.alquilado).reduce((a,p) => a + (p.alq_mensual||0), 0);
+  const list = filtered();
+  const isAlq = currentView === "alquiladas";
+
+  document.getElementById("main").innerHTML = `
+    <div class="page-header">
+      <h2>${isAlq ? "Unidades Alquiladas" : "Todas las Propiedades"}</h2>
+      <p>${new Date().toLocaleDateString("es-AR",{weekday:"long",year:"numeric",month:"long",day:"numeric"})}</p>
+    </div>
+    <div class="stats">
+      <div class="stat-card"><div class="stat-label">Total</div><div class="stat-value">${props.length}</div></div>
+      <div class="stat-card"><div class="stat-label">Disponibles</div><div class="stat-value green">${vac}</div></div>
+      <div class="stat-card"><div class="stat-label">Alquiladas</div><div class="stat-value orange">${alq}</div></div>
+      <div class="stat-card"><div class="stat-label">Habitadas</div><div class="stat-value blue">${hab}</div></div>
+      <div class="stat-card"><div class="stat-label">Ingresos/mes</div><div class="stat-value accent">$${Math.round(ingresos/1000)}k</div></div>
+    </div>
+    <div class="toolbar">
+      <div class="search-wrap"><span class="search-icon">⌕</span><input placeholder="Buscar dirección, barrio, inquilino..." value="${search}" oninput="search=this.value;renderMain()"></div>
+      <select class="filter-select" onchange="fTipo=this.value;renderMain()">
+        <option value="">Todos los tipos</option>
+        ${TIPOS.map(t=>`<option value="${t}"${fTipo===t?" selected":""}>${t}</option>`).join("")}
+      </select>
+      <select class="filter-select" onchange="fSit=this.value;renderMain()">
+        <option value="">Todas las situaciones</option>
+        ${SITS.map(s=>`<option value="${s}"${fSit===s?" selected":""}>${s}</option>`).join("")}
+      </select>
+      <button class="btn-primary" onclick="openForm()">+ Nueva propiedad</button>
+    </div>
+    <div class="count-line">${list.length} propiedad${list.length!==1?"es":""}</div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th style="width:100px">Tipo</th>
+          <th style="width:120px">Barrio</th>
+          <th>Dirección</th>
+          <th style="width:120px">Precio</th>
+          <th style="width:55px">m²</th>
+          <th style="width:90px">Situación</th>
+          ${isAlq ? '<th style="width:130px">Inquilino</th>' : ''}
+          <th style="width:90px">Acciones</th>
+        </tr></thead>
+        <tbody>
+        ${list.length === 0 ? `<tr><td colspan="${isAlq?8:7}" class="empty-state"><p>No hay propiedades que coincidan con la búsqueda.</p></td></tr>` :
+          list.map(p => `<tr onclick="openDetail(${p.id})">
+            <td><span class="badge b-${p.tipo}">${p.tipo}</span></td>
+            <td>${p.barrio}</td>
+            <td title="${p.direccion}">${p.direccion}</td>
+            <td class="price-cell">${fmt(p.precio)}</td>
+            <td>${p.sup_total > 0 ? p.sup_total : ""}</td>
+            <td><span class="badge b-${p.situacion}">${p.situacion}</span></td>
+            ${isAlq ? `<td>${p.inquilino||"—"}</td>` : ""}
+            <td onclick="event.stopPropagation()"><div class="row-act">
+              <button class="btn-sm" onclick="openForm(${p.id})">Editar</button>
+              <button class="btn-sm btn-del" onclick="deleteProp(${p.id})">✕</button>
+            </div></td>
+          </tr>`).join("")}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+function openDetail(id){
+  const p = props.find(x => x.id === id);
+  if(!p) return;
+  panelMode = "detail"; panelId = id;
+  document.getElementById("panel-content").innerHTML = `
+    <div class="panel-header">
+      <span class="panel-title">Detalle</span>
+      <button class="btn-close" onclick="closePanel()">✕</button>
+    </div>
+    <div class="panel-body">
+      <!-- Fotos -->
+      <div id="fotos-section-${id}" style="margin-bottom:14px"></div>
+      <div style="margin-bottom:14px">
+        <label style="display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border:1px dashed var(--border);border-radius:6px;cursor:pointer;font-size:12px;color:var(--text-2)">
+          📷 Agregar fotos
+          <input type="file" accept="image/*" multiple style="display:none" onchange="subirFotos(event, ${id})">
+        </label>
+        <span id="fotos-status-${id}" style="font-size:11px;color:var(--text-3);margin-left:8px"></span>
+      </div>
+      <div class="detail-price">${fmt(p.precio)} <small>${p.expensas > 0 ? "+ exp. " + fmtARS(p.expensas) + "/mes" : ""}</small></div>
+      <div class="detail-badges">
+        <span class="badge b-${p.tipo}">${p.tipo}</span>
+        <span class="badge b-${p.situacion}">${p.situacion}</span>
+      </div>
+      <div class="detail-address">${p.direccion}</div>
+      <div class="detail-sub">${p.barrio}${p.disposicion ? " · " + p.disposicion : ""}</div>
+      <hr class="detail-divider">
+      <div class="detail-grid">
+        ${p.sup_total > 0 ? `<div class="dg"><div class="dg-l">Sup. total</div><div class="dg-v">${p.sup_total} m²</div></div>` : ""}
+        ${p.sup_cubierta > 0 ? `<div class="dg"><div class="dg-l">Cubierta</div><div class="dg-v">${p.sup_cubierta} m²</div></div>` : ""}
+        ${p.sup_terreno > 0 ? `<div class="dg"><div class="dg-l">Terreno</div><div class="dg-v">${p.sup_terreno} m²</div></div>` : ""}
+        ${p.ambientes > 0 ? `<div class="dg"><div class="dg-l">Ambientes</div><div class="dg-v">${p.ambientes}</div></div>` : ""}
+        ${p.dormitorios > 0 ? `<div class="dg"><div class="dg-l">Dormitorios</div><div class="dg-v">${p.dormitorios}</div></div>` : ""}
+        ${p.baños > 0 ? `<div class="dg"><div class="dg-l">Baños</div><div class="dg-v">${p.baños}</div></div>` : ""}
+        ${p.antiguedad ? `<div class="dg"><div class="dg-l">Antigüedad</div><div class="dg-v">${p.antiguedad}</div></div>` : ""}
+        ${p.condicion ? `<div class="dg"><div class="dg-l">Condición</div><div class="dg-v">${p.condicion}</div></div>` : ""}
+        ${p.apto_credito ? `<div class="dg"><div class="dg-l">Apto crédito</div><div class="dg-v">${p.apto_credito}</div></div>` : ""}
+      </div>
+      ${p.observaciones ? `<div class="section-label">Observaciones</div><div class="obs-box">${p.observaciones}</div>` : ""}
+      ${p.propietario ? `<hr class="detail-divider"><div class="section-label">Propietario</div>
+        <div class="inq-card">
+          <div class="inq-name">${p.propietario}</div>
+          ${p.tel_propietario ? `<div class="inq-row">📞 ${p.tel_propietario}</div>` : ""}
+          ${p.mail_propietario ? `<div class="inq-row">✉️ ${p.mail_propietario}</div>` : ""}
+        </div>` : ""}
+      ${p.alquilado ? `<hr class="detail-divider"><div class="section-label">Inquilino</div>
+        <div class="inq-card">
+          <div class="inq-name">${p.inquilino}</div>
+          ${p.telefono ? `<div class="inq-row">📞 ${p.telefono}</div>` : ""}
+          ${p.mail ? `<div class="inq-row">✉️ ${p.mail}</div>` : ""}
+          <div class="inq-row" style="margin-top:8px">📅 ${p.ini_contrato} → ${p.fin_contrato}</div>
+          <div class="inq-row">💰 ${fmtARS(p.alq_mensual)}/mes · ${p.ajuste}</div>
+          ${p.valor_inicial > 0 ? `<div class="inq-row">Valor inicial: ${fmtARS(p.valor_inicial)}</div>` : ""}
+        </div>
+        <hr class="detail-divider">
+        <div class="section-label">🧮 Calculadora de ajuste</div>
+        <div style="background:var(--bg);border-radius:var(--border-radius-md,8px);padding:14px;font-size:13px">
+          <div style="margin-bottom:10px;color:var(--text-2)">Alquiler actual: <strong>${fmtARS(p.alq_mensual)}</strong></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+            <div>
+              <label style="font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Tipo de ajuste</label>
+              <select id="calc-tipo-${p.id}" onchange="calcularAjuste(${p.id}, ${p.alq_mensual})" style="width:100%;padding:7px 9px;border:1px solid var(--border);border-radius:6px;background:var(--surface);font-size:13px;font-family:inherit">
+                <option value="icl">ICL (Índice Casa Propia)</option>
+                <option value="pct">Porcentaje fijo</option>
+              </select>
+            </div>
+            <div id="calc-input-wrap-${p.id}">
+              <label style="font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:4px">Valor ICL</label>
+              <input id="calc-val-${p.id}" type="number" step="0.01" placeholder="Ej: 1.35" oninput="calcularAjuste(${p.id}, ${p.alq_mensual})" style="width:100%;padding:7px 9px;border:1px solid var(--border);border-radius:6px;background:var(--surface);font-size:13px;font-family:inherit">
+            </div>
+          </div>
+          <div id="calc-resultado-${p.id}" style="display:none;background:var(--surface);border-radius:6px;padding:12px;border:1px solid var(--border);margin-bottom:10px">
+            <div style="font-size:11px;color:var(--text-3);margin-bottom:4px">NUEVO ALQUILER</div>
+            <div id="calc-nuevo-${p.id}" style="font-size:20px;font-weight:600;color:var(--green)"></div>
+            <div id="calc-diff-${p.id}" style="font-size:12px;color:var(--text-3);margin-top:3px"></div>
+          </div>
+          <button id="calc-btn-${p.id}" onclick="aplicarAjuste(${p.id})" style="display:none;width:100%;padding:9px;background:var(--text);color:white;border:none;border-radius:6px;font-size:13px;font-weight:500;font-family:inherit;cursor:pointer">Aplicar y guardar nuevo valor</button>
+        </div>` : ""}
+    </div>
+    <div class="detail-actions">
+      <button class="btn-primary" onclick="openForm(${p.id})">Editar propiedad</button>
+      <button class="btn-secondary" onclick="toggleHistorial(${p.id})">📈 Historial</button>
+      <button class="btn-secondary" onclick="closePanel()">Cerrar</button>
+      <button class="btn-danger" onclick="deleteProp(${p.id})">Eliminar</button>
+    </div>
+    <div id="historial-section" style="border-top:1px solid var(--border)"></div>`;
+  document.getElementById("panel").classList.add("open");
+  document.getElementById("overlay").classList.add("open");
+  // Cargar fotos
+  cargarFotos(id);
+}
+
+async function cargarFotos(propId){
+  const section = document.getElementById(`fotos-section-${propId}`);
+  if(!section) return;
+  try {
+    const { data, error } = await db.storage.from("propiedades-fotos").list(`prop-${propId}/`);
+    if(error || !data || data.length === 0){ section.innerHTML = ""; return; }
+    const fotos = data.filter(f => f.name && f.name !== ".emptyFolderPlaceholder");
+    if(fotos.length === 0){ section.innerHTML = ""; return; }
+    const urls = fotos.map(f => {
+      const { data: urlData } = db.storage.from("propiedades-fotos").getPublicUrl(`prop-${propId}/${f.name}`);
+      return { url: urlData.publicUrl, name: f.name };
+    });
+    section.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px">
+        ${urls.map(f => `
+          <div style="position:relative;aspect-ratio:4/3">
+            <img src="${f.url}" style="width:100%;height:100%;object-fit:cover;border-radius:6px;cursor:pointer" onclick="verFoto('${f.url}')">
+            <button onclick="eliminarFoto(${propId},'${f.name}')" style="position:absolute;top:3px;right:3px;background:rgba(0,0,0,.5);color:white;border:none;border-radius:50%;width:20px;height:20px;font-size:11px;cursor:pointer;line-height:1">✕</button>
+          </div>`).join("")}
+      </div>`;
+  } catch(e){ section.innerHTML = ""; }
+}
+
+async function subirFotos(event, propId){
+  const files = event.target.files;
+  if(!files || files.length === 0) return;
+  const status = document.getElementById(`fotos-status-${propId}`);
+  if(status) status.textContent = "Subiendo...";
+  for(const file of files){
+    const nombre = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.]/g,"_")}`;
+    await db.storage.from("propiedades-fotos").upload(`prop-${propId}/${nombre}`, file);
+  }
+  if(status) status.textContent = `${files.length} foto${files.length!==1?"s":""} subida${files.length!==1?"s":""}`;
+  setTimeout(() => { if(status) status.textContent = ""; }, 2000);
+  cargarFotos(propId);
+}
+
+async function eliminarFoto(propId, nombre){
+  if(!confirm("¿Eliminar esta foto?")) return;
+  await db.storage.from("propiedades-fotos").remove([`prop-${propId}/${nombre}`]);
+  cargarFotos(propId);
+}
+
+function verFoto(url){
+  const overlay = document.createElement("div");
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.9);display:flex;align-items:center;justify-content:center;z-index:1000;cursor:pointer";
+  overlay.innerHTML = `<img src="${url}" style="max-width:90vw;max-height:90vh;border-radius:8px;object-fit:contain">`;
+  overlay.onclick = () => overlay.remove();
+  document.body.appendChild(overlay);
+}
+
+function openForm(id = null){
+  panelMode = "form"; panelId = id;
+  form = id ? {...props.find(x => x.id === id)} : emptyForm();
+  renderForm();
+  document.getElementById("panel").classList.add("open");
+  document.getElementById("overlay").classList.add("open");
+}
+
+function renderForm(){
+  const isEdit = panelId !== null;
+  document.getElementById("panel-content").innerHTML = `
+    <div class="panel-header">
+      <span class="panel-title">${isEdit ? "Editar propiedad" : "Nueva propiedad"}</span>
+      <button class="btn-close" onclick="closePanel()">✕</button>
+    </div>
+    <div class="panel-body">
+      <div class="form-grid">
+        <div class="form-field"><label>Tipo</label><select id="f-tipo">${TIPOS.map(t=>`<option${form.tipo===t?" selected":""}>${t}</option>`).join("")}</select></div>
+        <div class="form-field"><label>Situación</label><select id="sit-select" onchange="changeSit(this.value)">${SITS.map(s=>`<option${form.situacion===s?" selected":""}>${s}</option>`).join("")}</select></div>
+        <div class="form-field full"><label>Dirección *</label><input id="f-dir" value="${form.direccion||''}" placeholder="Ej: Córdoba 1452 P3 Dto 5"></div>
+        <div class="form-field"><label>Barrio</label><select id="f-barrio">${BARRIOS.map(b=>`<option${form.barrio===b?" selected":""}>${b}</option>`).join("")}</select></div>
+        <div class="form-field"><label>Disposición</label><input id="f-disp" value="${form.disposicion||''}" placeholder="Frente / Contrafrente"></div>
+        <div class="form-field"><label>Precio (USD) *</label><input id="f-precio" type="number" value="${form.precio||''}"></div>
+        <div class="form-field"><label>Expensas (ARS/mes)</label><input id="f-expensas" type="number" value="${form.expensas||''}"></div>
+        <div class="form-field"><label>Sup. total (m²)</label><input id="f-suptotal" type="number" value="${form.sup_total||''}"></div>
+        <div class="form-field"><label>Sup. cubierta (m²)</label><input id="f-supcub" type="number" value="${form.sup_cubierta||''}"></div>
+        <div class="form-field"><label>Sup. terreno (m²)</label><input id="f-supter" type="number" value="${form.sup_terreno||''}"></div>
+        <div class="form-field"><label>Ambientes</label><input id="f-amb" type="number" value="${form.ambientes||''}" min="0"></div>
+        <div class="form-field"><label>Dormitorios</label><input id="f-dorm" type="number" value="${form.dormitorios||''}" min="0"></div>
+        <div class="form-field"><label>Baños</label><input id="f-banos" type="number" value="${form.baños||''}" min="0"></div>
+        <div class="form-field"><label>Antigüedad</label><input id="f-antig" value="${form.antiguedad||''}" placeholder="A estrenar / 5 años"></div>
+        <div class="form-field"><label>Condición</label><input id="f-cond" value="${form.condicion||''}" placeholder="Excelente / Muy bueno"></div>
+        <div class="form-field"><label>Apto crédito</label><input id="f-apto" value="${form.apto_credito||''}" placeholder="Sí / No"></div>
+        <div class="form-field"><label>Financiación/Permuta</label><input id="f-finperm" value="${form.fin_permuta||''}"></div>
+        <div class="form-field full"><label>Observaciones</label><textarea id="f-obs">${form.observaciones||''}</textarea></div>
+        <div class="form-field full" style="border-top:1px solid var(--border);padding-top:10px;margin-top:4px"><label style="color:var(--text);font-weight:500">Propietario</label></div>
+        <div class="form-field"><label>Nombre propietario</label><input id="f-prop" value="${form.propietario||''}"></div>
+        <div class="form-field"><label>Teléfono propietario</label><input id="f-telprop" value="${form.tel_propietario||''}"></div>
+        <div class="form-field full"><label>Mail propietario</label><input id="f-mailprop" value="${form.mail_propietario||''}"></div>
+        <div id="inq-section">${form.alquilado ? inquilinoFields() : ""}</div>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn-secondary" onclick="closePanel()">Cancelar</button>
+      <button class="btn-primary" onclick="saveProp()">Guardar en Supabase</button>
+    </div>`;
+}
+
+function g(id){ const el=document.getElementById(id); return el ? el.value : ""; }
+
+function closePanel(){
+  document.getElementById("panel").classList.remove("open");
+  document.getElementById("overlay").classList.remove("open");
+}
+
+async function deleteProp(id){
+  if(!confirm("¿Eliminar esta propiedad?")) return;
+  const { error } = await db.from("propiedades").delete().eq("id", id);
+  if(error){ showToast("Error: " + error.message); return; }
+  props = props.filter(p => p.id !== id);
+  closePanel(); showToast("Propiedad eliminada ✓"); renderMain();
+}
+
+async function saveProp(){
+  const dir = g("f-dir"); const precio = g("f-precio");
+  if(!dir || !precio){ alert("Dirección y precio son obligatorios."); return; }
+  const sit = g("sit-select") || form.situacion;
+  const p = {
+    tipo: g("f-tipo")||form.tipo,
+    barrio: g("f-barrio")||form.barrio,
+    direccion: dir,
+    precio: Number(precio)||0,
+    moneda: "USD",
+    expensas: Number(g("f-expensas"))||0,
+    sup_total: Number(g("f-suptotal"))||0,
+    sup_cubierta: Number(g("f-supcub"))||0,
+    sup_terreno: Number(g("f-supter"))||0,
+    ambientes: Number(g("f-amb"))||0,
+    dormitorios: Number(g("f-dorm"))||0,
+    baños: Number(g("f-banos"))||0,
+    antiguedad: g("f-antig"),
+    condicion: g("f-cond"),
+    disposicion: g("f-disp"),
+    situacion: sit,
+    apto_credito: g("f-apto"),
+    fin_permuta: g("f-finperm"),
+    alquilado: sit === "Alquilada",
+    ini_contrato: g("f-ini")||"",
+    fin_contrato: g("f-fin")||"",
+    alq_mensual: Number(g("f-alqmens"))||0,
+    ajuste: g("f-ajuste")||"",
+    observaciones: g("f-obs"),
+    inquilino: g("f-inquilino")||"",
+    telefono: g("f-telefono")||"",
+    mail: g("f-mail")||"",
+    valor_inicial: Number(g("f-valinicial"))||0,
+    propietario: g("f-prop")||"",
+    tel_propietario: g("f-telprop")||"",
+    mail_propietario: g("f-mailprop")||""
+  };
+  if(panelId){
+    // Buscar propiedad original para comparar precios
+    const original = props.find(x => x.id === panelId);
+    const historial = [];
+    if(original){
+      if(original.precio !== p.precio){
+        historial.push({propiedad_id: panelId, tipo_precio: 'venta', valor_anterior: original.precio, valor_nuevo: p.precio});
+      }
+      if(original.alq_mensual !== p.alq_mensual && p.alq_mensual > 0){
+        historial.push({propiedad_id: panelId, tipo_precio: 'alquiler', valor_anterior: original.alq_mensual, valor_nuevo: p.alq_mensual});
+      }
+    }
+    const { error } = await db.from("propiedades").update(p).eq("id", panelId);
+    if(error){ showToast("Error: " + error.message); return; }
+    // Guardar historial si hubo cambios
+    if(historial.length > 0){
+      await db.from("historial_precios").insert(historial);
+    }
+    showToast("Propiedad actualizada ✓");
+  } else {
+    const { error } = await db.from("propiedades").insert(p).select().single();
+    if(error){ showToast("Error: " + error.message); return; }
+    showToast("Propiedad guardada ✓");
+  }
+  const { data: fresh } = await db.from("propiedades").select("*").order("id");
+  if(fresh) props = fresh;
+  closePanel(); renderMain();
+}
+
+async function renderHistorialPanel(propId){
+  try {
+    const { data: hist, error } = await db.from("historial_precios")
+      .select("*").eq("propiedad_id", propId).order("fecha", {ascending: false});
+    if(error) throw error;
+    if(!hist || hist.length === 0){
+      return `<div style="padding:20px;color:var(--text-3);font-size:13px;text-align:center">Sin cambios de precio registrados aún.<br><small>Los cambios se registran automáticamente al editar.</small></div>`;
+    }
+    return hist.map(h => {
+      const fecha = new Date(h.fecha).toLocaleDateString("es-AR", {day:"2-digit",month:"2-digit",year:"numeric", hour:"2-digit", minute:"2-digit"});
+      const tipo = h.tipo_precio === "venta" ? "💰 Precio venta" : "📋 Alquiler mensual";
+      const moneda = h.tipo_precio === "venta" ? "USD " : "$";
+      const ant = moneda + Number(h.valor_anterior).toLocaleString("es-AR");
+      const nuevo = moneda + Number(h.valor_nuevo).toLocaleString("es-AR");
+      const subio = h.valor_nuevo > h.valor_anterior;
+      return `<div style="padding:12px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div style="font-size:12px;font-weight:500;margin-bottom:3px">${tipo}</div>
+          <div style="font-size:11px;color:var(--text-3)">${fecha}</div>
+        </div>
+        <div style="text-align:right;font-size:12px">
+          <div style="color:var(--text-3);text-decoration:line-through">${ant}</div>
+          <div style="font-weight:600;color:${subio?"var(--green)":"var(--red)"}">${subio?"↑":"↓"} ${nuevo}</div>
+        </div>
+      </div>`;
+    }).join("");
+  } catch(e) {
+    return `<div style="padding:20px;color:var(--red);font-size:12px">Error al cargar historial: ${e.message}</div>`;
+  }
+}
+
+function calcularAjuste(propId, alqActual){
+  const tipo = document.getElementById(`calc-tipo-${propId}`)?.value;
+  const val = parseFloat(document.getElementById(`calc-val-${propId}`)?.value);
+  const inputWrap = document.getElementById(`calc-input-wrap-${propId}`);
+  const resultado = document.getElementById(`calc-resultado-${propId}`);
+  const nuevo = document.getElementById(`calc-nuevo-${propId}`);
+  const diff = document.getElementById(`calc-diff-${propId}`);
+  const btn = document.getElementById(`calc-btn-${propId}`);
+
+  // Actualizar label según tipo
+  if(inputWrap){
+    const label = inputWrap.querySelector("label");
+    const input = inputWrap.querySelector("input");
+    if(tipo === "icl"){
+      if(label) label.textContent = "Valor ICL";
+      if(input) input.placeholder = "Ej: 1.35";
+    } else {
+      if(label) label.textContent = "Porcentaje (%)";
+      if(input) input.placeholder = "Ej: 30";
+    }
+  }
+
+  if(!val || val <= 0){ 
+    if(resultado) resultado.style.display = "none";
+    if(btn) btn.style.display = "none";
+    return; 
+  }
+
+  let nuevoValor;
+  if(tipo === "icl"){
+    nuevoValor = Math.round(alqActual * val);
+  } else {
+    nuevoValor = Math.round(alqActual * (1 + val/100));
+  }
+
+  const diferencia = nuevoValor - alqActual;
+  const pct = ((diferencia / alqActual) * 100).toFixed(1);
+
+  if(nuevo) nuevo.textContent = "$" + nuevoValor.toLocaleString("es-AR");
+  if(diff) diff.textContent = `+ $${diferencia.toLocaleString("es-AR")} (${pct}% de aumento)`;
+  if(resultado) resultado.style.display = "block";
+  if(btn){ btn.style.display = "block"; btn.dataset.nuevo = nuevoValor; }
+}
+
+async function aplicarAjuste(propId){
+  const btn = document.getElementById(`calc-btn-${propId}`);
+  const nuevoValor = Number(btn?.dataset.nuevo);
+  if(!nuevoValor) return;
+  if(!confirm(`¿Confirmar nuevo alquiler de $${nuevoValor.toLocaleString("es-AR")}/mes?`)) return;
+
+  const original = props.find(x => x.id === propId);
+  const { error } = await db.from("propiedades").update({alq_mensual: nuevoValor}).eq("id", propId);
+  if(error){ showToast("Error: " + error.message); return; }
+
+  // Guardar en historial
+  await db.from("historial_precios").insert({
+    propiedad_id: propId,
+    tipo_precio: "alquiler",
+    valor_anterior: original.alq_mensual,
+    valor_nuevo: nuevoValor
+  });
+
+  const { data: fresh } = await db.from("propiedades").select("*").order("id");
+  if(fresh) props = fresh;
+  showToast("Alquiler actualizado ✓");
+  openDetail(propId);
+}
+
+async function toggleHistorial(propId){
+  const section = document.getElementById("historial-section");
+  if(!section) return;
+  if(section.innerHTML !== ""){
+    section.innerHTML = "";
+    return;
+  }
+  section.innerHTML = `<div style="padding:16px;color:var(--text-3);font-size:12px">Cargando historial...</div>`;
+  const html = await renderHistorialPanel(propId);
+  section.innerHTML = `
+    <div style="padding:14px 16px 8px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--text-3)">Historial de precios</div>
+    ${html}`;
+}
+
+function changeSit(val){
+  form.situacion = val;
+  form.alquilado = val === "Alquilada";
+  const inqSection = document.getElementById("inq-section");
+  if(inqSection) inqSection.innerHTML = val === "Alquilada" ? inquilinoFields() : "";
+}
+
+function inquilinoFields(){
+  return `
+  <div class="form-field full" style="border-top:1px solid var(--border);padding-top:10px;margin-top:4px"><label style="color:var(--text);font-weight:500">Datos del inquilino</label></div>
+  <div class="form-field"><label>Inquilino</label><input id="f-inquilino" value="${form.inquilino||''}"></div>
+  <div class="form-field"><label>Teléfono</label><input id="f-telefono" value="${form.telefono||''}"></div>
+  <div class="form-field full"><label>Mail</label><input id="f-mail" value="${form.mail||''}"></div>
+  <div class="form-field"><label>Inicio contrato</label><input id="f-ini" value="${form.ini_contrato||''}" placeholder="DD/MM/AAAA"></div>
+  <div class="form-field"><label>Fin contrato</label><input id="f-fin" value="${form.fin_contrato||''}" placeholder="DD/MM/AAAA"></div>
+  <div class="form-field"><label>Alquiler mensual (ARS)</label><input id="f-alqmens" type="number" value="${form.alq_mensual||''}"></div>
+  <div class="form-field"><label>Ajuste</label><input id="f-ajuste" value="${form.ajuste||''}" placeholder="Cuatrimestral ICL"></div>
+  <div class="form-field"><label>Valor inicial (ARS)</label><input id="f-valinicial" type="number" value="${form.valor_inicial||''}"></div>`;
+}
+
+const PWD = "Jotainm";
+
+function checkPwd(){
+  const val = document.getElementById("pwd-input").value;
+  if(val === PWD){
+    sessionStorage.setItem("jota_auth","1");
+    document.getElementById("login-wrap").style.display = "none";
+    init();
+  } else {
+    document.getElementById("login-error").textContent = "Contraseña incorrecta";
+    document.getElementById("pwd-input").value = "";
+    document.getElementById("pwd-input").focus();
+  }
+}
+
+// Verificar si ya está autenticado
+if(sessionStorage.getItem("jota_auth") === "1"){
+  document.getElementById("login-wrap").style.display = "none";
+  init();
+}
+</script>
+</body>
+</html>
