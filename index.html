@@ -702,7 +702,7 @@ function openDetail(id){
     <div style="border-top:1px solid var(--border);padding:16px">
       <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--text-3);margin-bottom:12px">📄 Documentos</div>
       <div style="margin-bottom:12px">
-        <select id="doc-tipo-${p.id}" style="padding:7px 9px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:inherit;background:var(--bg);margin-right:8px">
+        <select id="doc-tipo-${p.id}" onchange="toggleExpensasInput(${p.id})" style="padding:7px 9px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:inherit;background:var(--bg);margin-right:8px">
           <option value="Escritura">Escritura</option>
           <option value="Autorización de venta">Autorización de venta</option>
           <option value="Oferta">Oferta</option>
@@ -711,7 +711,13 @@ function openDetail(id){
           <option value="Ficha de identidad">Ficha de identidad</option>
           <option value="Planos">Planos</option>
           <option value="Reglamento PH">Reglamento PH</option>
+          <option value="Liquidación de expensas">Liquidación de expensas</option>
+          <option value="Liquidación de expensas">Liquidación de expensas</option>
         </select>
+        <div id="expensas-input-${p.id}" style="display:none;margin-top:8px;margin-bottom:8px">
+          <label style="font-size:11px;color:var(--text-3);display:block;margin-bottom:4px">Importe total expensas (ARS)</label>
+          <input id="expensas-monto-${p.id}" type="number" placeholder="Ej: 250000" style="padding:7px 9px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:inherit;background:var(--bg);width:200px">
+        </div>
         <label style="display:inline-flex;align-items:center;gap:5px;padding:7px 12px;border:1px dashed var(--border);border-radius:6px;cursor:pointer;font-size:12px;color:var(--text-2)">
           📎 Subir documento
           <input type="file" accept=".pdf,.doc,.docx,.jpg,.png" style="display:none" onchange="subirDocumento(event, ${p.id})">
@@ -733,21 +739,37 @@ async function cargarDocumentos(propId){
   if(!section) return;
   const { data, error } = await db.from("documentos").select("*").eq("propiedad_id", propId).order("fecha", {ascending: false});
   if(error || !data || data.length === 0){ section.innerHTML = `<div style="font-size:12px;color:var(--text-3);text-align:center;padding:8px">Sin documentos adjuntos</div>`; return; }
-  const tipoIcono = { "Escritura":"📜", "Autorización de venta":"✅", "Oferta":"💬", "Contraoferta":"↩️", "Aceptación":"🤝", "Ficha de identidad":"🪪", "Planos":"📐", "Reglamento PH":"🏢" };
-  section.innerHTML = data.map(d => `
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;background:var(--bg);border-radius:6px;margin-bottom:6px">
-      <div style="display:flex;align-items:center;gap:8px">
-        <span style="font-size:16px">${tipoIcono[d.tipo]||"📄"}</span>
+  const tipoIcono = { "Escritura":"📜", "Autorización de venta":"✅", "Oferta":"💬", "Contraoferta":"↩️", "Aceptación":"🤝", "Ficha de identidad":"🪪", "Planos":"📐", "Reglamento PH":"🏢", "Liquidación de expensas":"💰" };
+  section.innerHTML = data.map(d => {
+    let desgloseHtml = "";
+    if(d.tipo === "Liquidación de expensas" && d.notas){
+      try {
+        const parsed = JSON.parse(d.notas);
+        const conceptos = parsed.conceptos?.slice(0,4).map(c => `<span style="font-size:10px;color:var(--text-3)">${c.nombre}: $${Number(c.importe).toLocaleString("es-AR")}</span>`).join(" · ") || "";
+        desgloseHtml = conceptos ? `<div style="margin-top:3px">${conceptos}</div>` : "";
+      } catch(e){}
+    }
+    return `
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:9px 12px;background:var(--bg);border-radius:6px;margin-bottom:6px">
+      <div style="display:flex;align-items:flex-start;gap:8px;flex:1">
+        <span style="font-size:16px;margin-top:2px">${tipoIcono[d.tipo]||"📄"}</span>
         <div>
           <div style="font-size:12px;font-weight:500">${d.tipo}</div>
           <div style="font-size:11px;color:var(--text-3)">${d.nombre} · ${new Date(d.fecha).toLocaleDateString("es-AR")}</div>
+          ${desgloseHtml}
         </div>
       </div>
-      <div style="display:flex;gap:6px">
+      <div style="display:flex;gap:6px;margin-left:8px">
         <a href="${d.url}" target="_blank" style="padding:4px 10px;font-size:11px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text-2);text-decoration:none">Ver</a>
         <button onclick="eliminarDocumento(${d.id}, ${propId})" style="padding:4px 8px;font-size:11px;border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--text-3);cursor:pointer">✕</button>
       </div>
-    </div>`).join("");
+    </div>`}).join("");
+}
+
+function toggleExpensasInput(propId){
+  const tipo = document.getElementById(`doc-tipo-${propId}`)?.value;
+  const wrap = document.getElementById(`expensas-input-${propId}`);
+  if(wrap) wrap.style.display = tipo === "Liquidación de expensas" ? "block" : "none";
 }
 
 async function subirDocumento(event, propId){
@@ -756,14 +778,60 @@ async function subirDocumento(event, propId){
   const tipo = document.getElementById(`doc-tipo-${propId}`)?.value || "Documento";
   const status = document.getElementById(`doc-status-${propId}`);
   if(status) status.textContent = "Subiendo...";
+
   const nombre = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g,"_")}`;
   const path = `prop-${propId}/${nombre}`;
   const { error: upErr } = await db.storage.from("propiedades-docs").upload(path, file);
   if(upErr){ if(status) status.textContent = "Error al subir"; return; }
   const { data: urlData } = db.storage.from("propiedades-docs").getPublicUrl(path);
-  await db.from("documentos").insert({ propiedad_id: propId, tipo, nombre: file.name, url: urlData.publicUrl });
-  if(status){ status.textContent = "Guardado ✓"; setTimeout(()=>status.textContent="",2000); }
+
+  // Si es liquidación de expensas, procesarla con IA
+  let notas = "";
+  if(tipo === "Liquidación de expensas" && file.type === "application/pdf"){
+    if(status) status.textContent = "Procesando con IA...";
+    try {
+      const base64 = await fileToBase64(file);
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 1000,
+          messages: [{
+            role: "user",
+            content: [
+              { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 }},
+              { type: "text", text: `Analizá esta liquidación de expensas argentina. Respondé SOLO con JSON sin backticks ni explicaciones:
+{"importe_total": número, "fecha_vencimiento": "DD/MM/AAAA o null", "periodo": "mes año", "conceptos": [{"nombre": "string", "importe": número}]}` }
+            ]
+          }]
+        })
+      });
+      const data = await response.json();
+      const text = data.content?.find(c => c.type === "text")?.text || "";
+      const parsed = JSON.parse(text.replace(/```json|```/g,"").trim());
+      notas = JSON.stringify(parsed);
+      if(parsed.importe_total > 0){
+        await db.from("propiedades").update({expensas: parsed.importe_total}).eq("id", propId);
+        const { data: fresh } = await db.from("propiedades").select("*").order("id");
+        if(fresh) props = fresh;
+        showToast(`Expensas actualizadas: $${parsed.importe_total.toLocaleString("es-AR")} ✓`);
+      }
+    } catch(e){ notas = ""; }
+  }
+
+  await db.from("documentos").insert({ propiedad_id: propId, tipo, nombre: file.name, url: urlData.publicUrl, notas });
+  if(status){ status.textContent = "Guardado ✓"; setTimeout(()=>status.textContent="",2500); }
   cargarDocumentos(propId);
+}
+
+function fileToBase64(file){
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result.split(",")[1]);
+    r.onerror = () => rej(new Error("Error leyendo archivo"));
+    r.readAsDataURL(file);
+  });
 }
 
 async function eliminarDocumento(docId, propId){
