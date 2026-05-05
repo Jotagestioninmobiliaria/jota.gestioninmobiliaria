@@ -55,7 +55,7 @@
   .page-header p { font-size: 13px; color: var(--text-3); }
 
   /* Stats */
-  .stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 28px; }
+  .stats { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin-bottom: 28px; }
   .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; }
   .stat-label { font-size: 11px; color: var(--text-3); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 6px; }
   .stat-value { font-size: 26px; font-weight: 600; color: var(--text); }
@@ -639,6 +639,7 @@ function renderMain(){
   const alq = props.filter(p => p.situacion === "Alquilada").length;
   const hab = props.filter(p => p.situacion === "Habitada").length;
   const ingresos = props.filter(p => p.alquilado).reduce((a,p) => a + (p.alq_mensual||0), 0);
+  const totalVenta = props.reduce((a,p) => a + (p.precio||0), 0);
   const list = filtered();
   const isAlq = currentView === "alquiladas";
 
@@ -653,6 +654,7 @@ function renderMain(){
       <div class="stat-card"><div class="stat-label">Alquiladas</div><div class="stat-value orange">${alq}</div></div>
       <div class="stat-card"><div class="stat-label">Habitadas</div><div class="stat-value blue">${hab}</div></div>
       <div class="stat-card"><div class="stat-label">Ingresos/mes</div><div class="stat-value accent">$${Math.round(ingresos/1000)}k</div></div>
+      <div class="stat-card"><div class="stat-label">Total en venta</div><div class="stat-value accent" style="font-size:15px">USD ${totalVenta.toLocaleString("es-AR")}</div></div>
     </div>
     <div class="toolbar">
       <div class="search-wrap"><span class="search-icon">⌕</span><input placeholder="Buscar dirección, barrio, inquilino..." value="${search}" oninput="search=this.value;renderMain()"></div>
