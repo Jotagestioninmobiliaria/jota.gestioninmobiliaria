@@ -251,7 +251,7 @@ const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsI
 const TIPOS = ["Departamento","Casa","Cochera","Baulera","Oficina","Otro"];
 const SITS = ["Vacía","Alquilada","Habitada"];
 const BARRIOS = ["Centro","República de la Sexta","Fisherton","España y Hospitales","Alberdi","Belgrano","Florida","Lourdes","Macrocentro","Pichincha","Puerto Norte","Sarmiento","Otro"];
-const PRIORITARIOS = ["Balcarce bis 45, P2 Dto A","Amenábar 1941","Ituzaingó 654, P4 Dto 3","San José de Calasanz 9585"];
+const PRIORITARIOS = ["San José de Calasanz 9585","Balcarce bis 45, P2 Dto A","Ituzaingó 654, P4 Dto 3","Amenábar 1941"];
 
 let db, props = [], search = "", fTipo = "", fSit = "", currentView = "propiedades";
 let panelMode = null, panelId = null, form = {};
@@ -595,7 +595,11 @@ function renderPropTable(list, isAlq){
 function renderGroups(list){
   const isPriority = p => PRIORITARIOS.some(d => p.direccion.includes(d) || d.includes(p.direccion.trim()));
   const groups = [
-    { key:"priority", icon:"📌", label:"Prioritarios", extra:"group-priority", items: list.filter(p => isPriority(p)) },
+    { key:"priority", icon:"📌", label:"Prioritarios", extra:"group-priority", items: list.filter(p => isPriority(p)).sort((a,b) => {
+        const ia = PRIORITARIOS.findIndex(d => a.direccion.includes(d) || d.includes(a.direccion.trim()));
+        const ib = PRIORITARIOS.findIndex(d => b.direccion.includes(d) || d.includes(b.direccion.trim()));
+        return ia - ib;
+      }) },
     { key:"d1", icon:"🛏", label:"1 Dormitorio",  items: list.filter(p => p.dormitorios === 1 && (p.tipo==="Departamento"||p.tipo==="Casa") && !isPriority(p)) },
     { key:"d2", icon:"🛏🛏", label:"2 Dormitorios", items: list.filter(p => p.dormitorios === 2 && (p.tipo==="Departamento"||p.tipo==="Casa") && !isPriority(p)) },
     { key:"d3", icon:"🛏🛏🛏", label:"3 Dormitorios", items: list.filter(p => p.dormitorios >= 3 && (p.tipo==="Departamento"||p.tipo==="Casa") && !isPriority(p)) },
