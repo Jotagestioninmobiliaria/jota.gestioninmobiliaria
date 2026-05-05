@@ -249,6 +249,8 @@ const SUPA_URL = "https://ombrbobzmiedicapfmqw.supabase.co";
 const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9tYnJib2J6bWllZGljYXBmbXF3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwMzAxOTMsImV4cCI6MjA5MjYwNjE5M30.MmoRaU1a2BqcOV7e8V1QVEh5JlL5bPEBFRO-XmfCels";
 
 const TIPOS = ["Departamento","Casa","Cochera","Baulera","Oficina","Otro"];
+const ABREV_TIPO = {"Departamento":"Dpto."};
+function abrevTipo(t){ return ABREV_TIPO[t] || t; }
 const SITS = ["Vacía","Alquilada","Habitada"];
 const BARRIOS = ["Centro","República de la Sexta","Fisherton","España y Hospitales","Alberdi","Belgrano","Florida","Lourdes","Macrocentro","Pichincha","Puerto Norte","Sarmiento","Otro"];
 const PRIORITARIOS = ["San José de Calasanz 9585","Balcarce bis 45, P2 Dto A","Ituzaingó 654, P4 Dto 3","Amenábar 1941"];
@@ -557,14 +559,23 @@ function renderAlertas(){
   </div>`;
 }
 
+function parseDireccion(dir){
+  const sep = dir.includes(", ") ? [dir.indexOf(", "), 2] : dir.includes(" - ") ? [dir.indexOf(" - "), 3] : null;
+  if(!sep) return { domicilio: dir, unidad: "" };
+  return { domicilio: dir.substring(0, sep[0]), unidad: dir.substring(sep[0] + sep[1]) };
+}
+
 function renderPropRow(p, isAlq){
+  const { domicilio, unidad } = parseDireccion(p.direccion);
   return `<tr onclick="openDetail(${p.id})">
-    <td><span class="badge b-${p.tipo}">${p.tipo}</span></td>
+    <td title="${p.direccion}">${domicilio}</td>
+    <td>${unidad||"—"}</td>
     <td>${p.barrio}</td>
-    <td title="${p.direccion}">${p.direccion}</td>
-    <td class="price-cell">${fmt(p.precio)}</td>
-    <td>${p.sup_total > 0 ? p.sup_total : ""}</td>
+    <td><span class="badge b-${p.tipo}">${abrevTipo(p.tipo)}</span></td>
+    <td style="text-align:center">${p.dormitorios > 0 ? p.dormitorios : "—"}</td>
+    <td style="text-align:center">${p.sup_total > 0 ? p.sup_total : "—"}</td>
     <td><span class="badge b-${p.situacion}">${p.situacion}</span></td>
+    <td class="price-cell">${fmt(p.precio)}</td>
     ${isAlq ? `<td>${p.inquilino||"—"}</td>` : ""}
     <td onclick="event.stopPropagation()"><div class="row-act">
       <button class="btn-sm" onclick="openForm(${p.id})">Editar</button>
@@ -578,12 +589,14 @@ function renderPropTable(list, isAlq){
   return `<div class="table-wrap">
     <table>
       <thead><tr>
+        <th>Domicilio</th>
+        <th style="width:110px">Unidad</th>
+        <th style="width:130px">Barrio</th>
         <th style="width:100px">Tipo</th>
-        <th style="width:120px">Barrio</th>
-        <th>Dirección</th>
-        <th style="width:120px">Precio</th>
-        <th style="width:55px">m²</th>
+        <th style="width:55px">Dorm.</th>
+        <th style="width:50px">m²</th>
         <th style="width:90px">Situación</th>
+        <th style="width:110px">Precio</th>
         ${isAlq ? '<th style="width:130px">Inquilino</th>' : ''}
         <th style="width:90px">Acciones</th>
       </tr></thead>
