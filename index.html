@@ -594,7 +594,7 @@ function renderPropTable(list, isAlq){
         <th style="width:130px">Barrio</th>
         <th style="width:100px">Tipo</th>
         <th style="width:55px">Dorm.</th>
-        <th style="width:50px">m²</th>
+        <th style="width:75px">m²</th>
         <th style="width:90px">Situación</th>
         <th style="width:110px">Precio</th>
         ${isAlq ? '<th style="width:130px">Inquilino</th>' : ''}
@@ -614,8 +614,8 @@ function renderGroups(list){
         return ia - ib;
       }) },
     { key:"d1", icon:"🛏", label:"1 Dormitorio",  items: list.filter(p => p.dormitorios === 1 && (p.tipo==="Departamento"||p.tipo==="Casa") && !isPriority(p)) },
-    { key:"d2", icon:"🛏🛏", label:"2 Dormitorios", items: list.filter(p => p.dormitorios === 2 && (p.tipo==="Departamento"||p.tipo==="Casa") && !isPriority(p)) },
-    { key:"d3", icon:"🛏🛏🛏", label:"3 Dormitorios", items: list.filter(p => p.dormitorios >= 3 && (p.tipo==="Departamento"||p.tipo==="Casa") && !isPriority(p)) },
+    { key:"d2", icon:"🛏", label:"2 Dormitorios", items: list.filter(p => p.dormitorios === 2 && (p.tipo==="Departamento"||p.tipo==="Casa") && !isPriority(p)) },
+    { key:"d3", icon:"🛏", label:"3 Dormitorios", items: list.filter(p => p.dormitorios >= 3 && (p.tipo==="Departamento"||p.tipo==="Casa") && !isPriority(p)) },
     { key:"of", icon:"🏢", label:"Oficinas",   items: list.filter(p => p.tipo==="Oficina" && !isPriority(p)) },
     { key:"co", icon:"🚗", label:"Cocheras",   items: list.filter(p => p.tipo==="Cochera" && !isPriority(p)) },
     { key:"ba", icon:"📦", label:"Bauleras",   items: list.filter(p => p.tipo==="Baulera" && !isPriority(p)) },
