@@ -653,7 +653,7 @@ function renderMain(){
       <div class="stat-card"><div class="stat-label">Disponibles</div><div class="stat-value green">${vac}</div></div>
       <div class="stat-card"><div class="stat-label">Alquiladas</div><div class="stat-value orange">${alq}</div></div>
       <div class="stat-card"><div class="stat-label">Habitadas</div><div class="stat-value blue">${hab}</div></div>
-      <div class="stat-card"><div class="stat-label">Ingresos/mes</div><div class="stat-value accent">$${Math.round(ingresos/1000)}k</div></div>
+      <div class="stat-card"><div class="stat-label">Ingresos/mes</div><div class="stat-value accent" style="font-size:15px">$${ingresos.toLocaleString("es-AR")}</div></div>
       <div class="stat-card"><div class="stat-label">Total en venta</div><div class="stat-value accent" style="font-size:15px">USD ${totalVenta.toLocaleString("es-AR")}</div></div>
     </div>
     <div class="toolbar">
