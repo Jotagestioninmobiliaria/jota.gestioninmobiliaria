@@ -170,6 +170,14 @@
   .alert-days-label { font-size: 10px; color: var(--text-3); text-transform: uppercase; }
   .no-alerts { text-align: center; padding: 60px 20px; color: var(--text-3); font-size: 14px; }
   .no-alerts-icon { font-size: 40px; margin-bottom: 12px; }
+  /* Groups */
+  .group-section { margin-bottom: 28px; }
+  .group-header { display: flex; align-items: center; gap: 9px; padding: 10px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius) var(--radius) 0 0; border-bottom: 2px solid var(--border); }
+  .group-title { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .6px; color: var(--text-2); }
+  .group-count { font-size: 11px; color: var(--text-3); background: var(--bg); border: 1px solid var(--border); border-radius: 20px; padding: 1px 9px; margin-left: 2px; }
+  .group-section .table-wrap { border-radius: 0 0 var(--radius) var(--radius); border-top: none; }
+  .group-priority .group-header { background: #FFFDF5; border-color: var(--accent); border-bottom-color: var(--accent); }
+  .group-priority .group-title { color: var(--accent); }
   .login-wrap { position: fixed; inset: 0; background: var(--bg); display: flex; align-items: center; justify-content: center; z-index: 999; }
   .login-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 40px 36px; width: 340px; text-align: center; }
   .login-logo { font-family: 'DM Serif Display', serif; font-size: 22px; color: var(--text); margin-bottom: 4px; }
@@ -243,6 +251,7 @@ const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsI
 const TIPOS = ["Departamento","Casa","Cochera","Baulera","Oficina","Otro"];
 const SITS = ["Vacía","Alquilada","Habitada"];
 const BARRIOS = ["Centro","República de la Sexta","Fisherton","España y Hospitales","Alberdi","Belgrano","Florida","Lourdes","Macrocentro","Pichincha","Puerto Norte","Sarmiento","Otro"];
+const PRIORITARIOS = ["Balcarce bis 45, P2 Dto A","Amenábar 1941","Ituzaingó 654, P4 Dto 3","San José de Calasanz 9585"];
 
 let db, props = [], search = "", fTipo = "", fSit = "", currentView = "propiedades";
 let panelMode = null, panelId = null, form = {};
@@ -548,6 +557,66 @@ function renderAlertas(){
   </div>`;
 }
 
+function renderPropRow(p, isAlq){
+  return `<tr onclick="openDetail(${p.id})">
+    <td><span class="badge b-${p.tipo}">${p.tipo}</span></td>
+    <td>${p.barrio}</td>
+    <td title="${p.direccion}">${p.direccion}</td>
+    <td class="price-cell">${fmt(p.precio)}</td>
+    <td>${p.sup_total > 0 ? p.sup_total : ""}</td>
+    <td><span class="badge b-${p.situacion}">${p.situacion}</span></td>
+    ${isAlq ? `<td>${p.inquilino||"—"}</td>` : ""}
+    <td onclick="event.stopPropagation()"><div class="row-act">
+      <button class="btn-sm" onclick="openForm(${p.id})">Editar</button>
+      <button class="btn-sm btn-del" onclick="deleteProp(${p.id})">✕</button>
+    </div></td>
+  </tr>`;
+}
+
+function renderPropTable(list, isAlq){
+  if(list.length === 0) return "";
+  return `<div class="table-wrap">
+    <table>
+      <thead><tr>
+        <th style="width:100px">Tipo</th>
+        <th style="width:120px">Barrio</th>
+        <th>Dirección</th>
+        <th style="width:120px">Precio</th>
+        <th style="width:55px">m²</th>
+        <th style="width:90px">Situación</th>
+        ${isAlq ? '<th style="width:130px">Inquilino</th>' : ''}
+        <th style="width:90px">Acciones</th>
+      </tr></thead>
+      <tbody>${list.map(p => renderPropRow(p, isAlq)).join("")}</tbody>
+    </table>
+  </div>`;
+}
+
+function renderGroups(list){
+  const isPriority = p => PRIORITARIOS.some(d => p.direccion.includes(d) || d.includes(p.direccion.trim()));
+  const groups = [
+    { key:"priority", icon:"📌", label:"Prioritarios", extra:"group-priority", items: list.filter(p => isPriority(p)) },
+    { key:"d1", icon:"🛏", label:"1 Dormitorio",  items: list.filter(p => p.dormitorios === 1 && (p.tipo==="Departamento"||p.tipo==="Casa") && !isPriority(p)) },
+    { key:"d2", icon:"🛏🛏", label:"2 Dormitorios", items: list.filter(p => p.dormitorios === 2 && (p.tipo==="Departamento"||p.tipo==="Casa") && !isPriority(p)) },
+    { key:"d3", icon:"🛏🛏🛏", label:"3 Dormitorios", items: list.filter(p => p.dormitorios >= 3 && (p.tipo==="Departamento"||p.tipo==="Casa") && !isPriority(p)) },
+    { key:"of", icon:"🏢", label:"Oficinas",   items: list.filter(p => p.tipo==="Oficina" && !isPriority(p)) },
+    { key:"co", icon:"🚗", label:"Cocheras",   items: list.filter(p => p.tipo==="Cochera" && !isPriority(p)) },
+    { key:"ba", icon:"📦", label:"Bauleras",   items: list.filter(p => p.tipo==="Baulera" && !isPriority(p)) },
+  ];
+  const asignados = new Set(groups.flatMap(g => g.items.map(p => p.id)));
+  const otros = list.filter(p => !asignados.has(p.id));
+  if(otros.length > 0) groups.push({ key:"otros", icon:"🏠", label:"Otros", items: otros });
+  return groups.filter(g => g.items.length > 0).map(g => `
+    <div class="group-section ${g.extra||""}">
+      <div class="group-header">
+        <span>${g.icon}</span>
+        <span class="group-title">${g.label}</span>
+        <span class="group-count">${g.items.length}</span>
+      </div>
+      ${renderPropTable(g.items, false)}
+    </div>`).join("");
+}
+
 function renderMain(){
   const vac = props.filter(p => p.situacion === "Vacía").length;
   const alq = props.filter(p => p.situacion === "Alquilada").length;
@@ -580,37 +649,15 @@ function renderMain(){
       </select>
       <button class="btn-primary" onclick="openForm()">+ Nueva propiedad</button>
     </div>
-    <div class="count-line">${list.length} propiedad${list.length!==1?"es":""}</div>
-    <div class="table-wrap">
-      <table>
-        <thead><tr>
-          <th style="width:100px">Tipo</th>
-          <th style="width:120px">Barrio</th>
-          <th>Dirección</th>
-          <th style="width:120px">Precio</th>
-          <th style="width:55px">m²</th>
-          <th style="width:90px">Situación</th>
-          ${isAlq ? '<th style="width:130px">Inquilino</th>' : ''}
-          <th style="width:90px">Acciones</th>
-        </tr></thead>
-        <tbody>
-        ${list.length === 0 ? `<tr><td colspan="${isAlq?8:7}" class="empty-state"><p>No hay propiedades que coincidan con la búsqueda.</p></td></tr>` :
-          list.map(p => `<tr onclick="openDetail(${p.id})">
-            <td><span class="badge b-${p.tipo}">${p.tipo}</span></td>
-            <td>${p.barrio}</td>
-            <td title="${p.direccion}">${p.direccion}</td>
-            <td class="price-cell">${fmt(p.precio)}</td>
-            <td>${p.sup_total > 0 ? p.sup_total : ""}</td>
-            <td><span class="badge b-${p.situacion}">${p.situacion}</span></td>
-            ${isAlq ? `<td>${p.inquilino||"—"}</td>` : ""}
-            <td onclick="event.stopPropagation()"><div class="row-act">
-              <button class="btn-sm" onclick="openForm(${p.id})">Editar</button>
-              <button class="btn-sm btn-del" onclick="deleteProp(${p.id})">✕</button>
-            </div></td>
-          </tr>`).join("")}
-        </tbody>
-      </table>
-    </div>`;
+    ${isAlq
+      ? `<div class="count-line">${list.length} propiedad${list.length!==1?"es":""}</div>
+         ${list.length === 0
+           ? `<div class="empty-state"><p>No hay propiedades que coincidan con la búsqueda.</p></div>`
+           : renderPropTable(list, true)}`
+      : (list.length === 0
+           ? `<div class="empty-state"><p>No hay propiedades que coincidan con la búsqueda.</p></div>`
+           : renderGroups(list))
+    }`;
 }
 
 function openDetail(id){
