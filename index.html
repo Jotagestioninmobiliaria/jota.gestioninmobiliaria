@@ -196,8 +196,9 @@
   <div class="login-card">
     <div class="login-logo">Jota Gestión<br>Inmobiliaria</div>
     <div class="login-sub">Rosario</div>
-    <input class="login-field" type="password" id="pwd-input" placeholder="Contraseña" onkeydown="if(event.key==='Enter')checkPwd()">
-    <button class="login-btn" onclick="checkPwd()">Ingresar</button>
+    <input class="login-field" type="email" id="email-input" placeholder="Email" style="letter-spacing:normal;margin-bottom:10px" onkeydown="if(event.key==='Enter')checkLogin()">
+    <input class="login-field" type="password" id="pwd-input" placeholder="Contraseña" onkeydown="if(event.key==='Enter')checkLogin()">
+    <button class="login-btn" onclick="checkLogin()">Ingresar</button>
     <div class="login-error" id="login-error"></div>
   </div>
 </div>
@@ -209,21 +210,29 @@
       <span>Rosario</span>
     </div>
     <nav class="sidebar-nav">
-      <div class="nav-item active" onclick="setView('propiedades')">
+      <div class="nav-item active" id="nav-propiedades" onclick="setView('propiedades')">
         <span class="nav-icon">⊞</span> Propiedades
       </div>
-      <div class="nav-item" onclick="setView('alquiladas')">
+      <div class="nav-item" id="nav-alquiladas" onclick="setView('alquiladas')">
         <span class="nav-icon">📋</span> Alquiladas
+      </div>
+      <div class="nav-item" id="nav-vendidas" onclick="setView('vendidas')">
+        <span class="nav-icon">🏆</span> Vendidas
       </div>
       <div class="nav-item" onclick="setView('alertas')" id="nav-alertas">
         <span class="nav-icon">🔔</span> Alertas <span id="alert-count" style="display:none;margin-left:auto;background:var(--red);color:white;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:600"></span>
       </div>
     </nav>
     <div class="sidebar-footer">
+      <div id="user-info" style="font-size:12px;color:var(--text-2);margin-bottom:10px;display:none">
+        <div id="user-name" style="font-weight:500"></div>
+        <div id="user-rol" style="font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:.4px"></div>
+      </div>
       <div class="db-status">
         <div class="db-dot" id="db-dot"></div>
         <span id="db-label">Conectando...</span>
       </div>
+      <button onclick="logout()" style="margin-top:10px;font-size:11px;color:var(--text-3);background:none;border:none;cursor:pointer;padding:0;font-family:inherit">Cerrar sesión</button>
     </div>
   </aside>
 
@@ -458,6 +467,8 @@ function setView(v){
   event.target.closest(".nav-item").classList.add("active");
   if(v === "alertas"){
     document.getElementById("main").innerHTML = renderAlertas();
+  } else if(v === "vendidas"){
+    renderMain();
   } else {
     renderMain();
   }
@@ -473,7 +484,22 @@ function parseFecha(str){
 }
 
 function filtered(){
-  let list = currentView === "alquiladas" ? props.filter(p => p.alquilado) : props;
+  let list = currentView === "alquiladas" ? props.filter(p => p.alquilado && !p.vendida)
+           : currentView === "vendidas"   ? props.filter(p => p.vendida)
+           : props.filter(p => !p.vendida);
+
+  // Role filtering
+  if(currentUser && currentUser.rol === "ventas"){
+    // Socio ventas: solo propiedades en venta (todas), y en alquiladas solo las que están en venta
+    if(currentView === "alquiladas"){
+      list = list.filter(p => p.precio > 0);
+    }
+    // En propiedades, ven todo (ya tienen acceso completo a ventas)
+  } else if(currentUser && currentUser.rol === "alquileres"){
+    // Socio alquileres: solo alquiladas
+    list = props.filter(p => p.alquilado);
+  }
+
   return list.filter(p => {
     const s = search.toLowerCase();
     const ms = !s || (p.direccion + p.barrio + (p.inquilino||"") + (p.observaciones||"")).toLowerCase().includes(s);
@@ -579,7 +605,7 @@ function renderPropRow(p, isAlq){
     ${isAlq ? `<td>${p.inquilino||"—"}</td>` : ""}
     <td onclick="event.stopPropagation()"><div class="row-act">
       <button class="btn-sm" onclick="openForm(${p.id})">Editar</button>
-      <button class="btn-sm btn-del" onclick="deleteProp(${p.id})">✕</button>
+      ${!p.vendida ? `<button class="btn-sm btn-del" onclick="marcarVendidaModal(${p.id})">Vender</button>` : ""}
     </div></td>
   </tr>`;
 }
@@ -634,22 +660,57 @@ function renderGroups(list){
     </div>`).join("");
 }
 
+function renderVendidas(list){
+  return `<div class="table-wrap">
+    <table>
+      <thead><tr>
+        <th>Domicilio</th>
+        <th style="width:110px">Unidad</th>
+        <th style="width:130px">Barrio</th>
+        <th style="width:100px">Tipo</th>
+        <th style="width:110px">Precio venta</th>
+        <th style="width:110px">Fecha venta</th>
+        <th style="width:90px">Acciones</th>
+      </tr></thead>
+      <tbody>${list.map(p => {
+        const { domicilio, unidad } = parseDireccion(p.direccion);
+        const fechaVenta = p.fecha_venta ? new Date(p.fecha_venta).toLocaleDateString("es-AR") : "—";
+        const precioVenta = p.precio_venta ? `USD ${Number(p.precio_venta).toLocaleString("es-AR")}` : fmt(p.precio);
+        return `<tr onclick="openDetail(${p.id})">
+          <td title="${p.direccion}">${domicilio}</td>
+          <td>${unidad||"—"}</td>
+          <td>${p.barrio}</td>
+          <td><span class="badge b-${p.tipo}">${abrevTipo(p.tipo)}</span></td>
+          <td class="price-cell">${precioVenta}</td>
+          <td>${fechaVenta}</td>
+          <td onclick="event.stopPropagation()"><div class="row-act">
+            <button class="btn-sm" onclick="openDetail(${p.id})">Ver</button>
+          </div></td>
+        </tr>`;
+      }).join("")}</tbody>
+    </table>
+  </div>`;
+}
+
 function renderMain(){
-  const vac = props.filter(p => p.situacion === "Vacía").length;
-  const alq = props.filter(p => p.situacion === "Alquilada").length;
-  const hab = props.filter(p => p.situacion === "Habitada").length;
-  const ingresos = props.filter(p => p.alquilado).reduce((a,p) => a + (p.alq_mensual||0), 0);
-  const totalVenta = props.reduce((a,p) => a + (p.precio||0), 0);
+  const vend = props.filter(p => p.vendida).length;
+  const vac = props.filter(p => p.situacion === "Vacía" && !p.vendida).length;
+  const alq = props.filter(p => p.situacion === "Alquilada" && !p.vendida).length;
+  const hab = props.filter(p => p.situacion === "Habitada" && !p.vendida).length;
+  const ingresos = props.filter(p => p.alquilado && !p.vendida).reduce((a,p) => a + (p.alq_mensual||0), 0);
+  const totalVenta = props.filter(p => !p.vendida).reduce((a,p) => a + (p.precio||0), 0);
   const list = filtered();
   const isAlq = currentView === "alquiladas";
+  const isVend = currentView === "vendidas";
+  const titulo = isAlq ? "Unidades Alquiladas" : isVend ? "Propiedades Vendidas" : "Todas las Propiedades";
 
   document.getElementById("main").innerHTML = `
     <div class="page-header">
-      <h2>${isAlq ? "Unidades Alquiladas" : "Todas las Propiedades"}</h2>
+      <h2>${titulo}</h2>
       <p>${new Date().toLocaleDateString("es-AR",{weekday:"long",year:"numeric",month:"long",day:"numeric"})}</p>
     </div>
     <div class="stats">
-      <div class="stat-card"><div class="stat-label">Total</div><div class="stat-value">${props.length}</div></div>
+      <div class="stat-card"><div class="stat-label">Total</div><div class="stat-value">${props.filter(p=>!p.vendida).length}</div></div>
       <div class="stat-card"><div class="stat-label">Disponibles</div><div class="stat-value green">${vac}</div></div>
       <div class="stat-card"><div class="stat-label">Alquiladas</div><div class="stat-value orange">${alq}</div></div>
       <div class="stat-card"><div class="stat-label">Habitadas</div><div class="stat-value blue">${hab}</div></div>
@@ -666,14 +727,18 @@ function renderMain(){
         <option value="">Todas las situaciones</option>
         ${SITS.map(s=>`<option value="${s}"${fSit===s?" selected":""}>${s}</option>`).join("")}
       </select>
-      <button class="btn-primary" onclick="openForm()">+ Nueva propiedad</button>
+      ${(!currentUser || currentUser.rol !== "alquileres") && !isVend ? `<button class="btn-primary" onclick="openForm()">+ Nueva propiedad</button>` : ""}
     </div>
     ${isAlq
       ? `<div class="count-line">${list.length} propiedad${list.length!==1?"es":""}</div>
          ${list.length === 0
            ? `<div class="empty-state"><p>No hay propiedades que coincidan con la búsqueda.</p></div>`
            : renderPropTable(list, true)}`
-      : (list.length === 0
+      : isVend
+        ? (list.length === 0
+           ? `<div class="empty-state"><p>No hay propiedades vendidas aún.</p></div>`
+           : renderVendidas(list))
+        : (list.length === 0
            ? `<div class="empty-state"><p>No hay propiedades que coincidan con la búsqueda.</p></div>`
            : renderGroups(list))
     }`;
@@ -762,7 +827,7 @@ function openDetail(id){
       <button class="btn-primary" onclick="openForm(${p.id})">Editar propiedad</button>
       <button class="btn-secondary" onclick="toggleHistorial(${p.id})">📈 Historial</button>
       <button class="btn-secondary" onclick="closePanel()">Cerrar</button>
-      <button class="btn-danger" onclick="deleteProp(${p.id})">Eliminar</button>
+      ${!p.vendida ? `<button class="btn-danger" onclick="marcarVendidaModal(${p.id})">🏆 Vender</button>` : `<span style="font-size:12px;color:var(--accent);font-weight:600;padding:9px">✓ Vendida</span>`}
     </div>
     <!-- Documentos -->
     <div style="border-top:1px solid var(--border);padding:16px">
@@ -1013,11 +1078,45 @@ function closePanel(){
 }
 
 async function deleteProp(id){
-  if(!confirm("¿Eliminar esta propiedad?")) return;
+  if(currentUser && currentUser.rol !== "admin"){ showToast("Sin permisos para eliminar"); return; }
+  if(!confirm("¿Eliminar esta propiedad permanentemente?")) return;
   const { error } = await db.from("propiedades").delete().eq("id", id);
   if(error){ showToast("Error: " + error.message); return; }
   props = props.filter(p => p.id !== id);
   closePanel(); showToast("Propiedad eliminada ✓"); renderMain();
+}
+
+function marcarVendidaModal(id){
+  const p = props.find(x => x.id === id);
+  if(!p) return;
+  const hoy = new Date().toISOString().split("T")[0];
+  const modal = document.createElement("div");
+  modal.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:9999";
+  modal.innerHTML = `
+    <div style="background:var(--surface);border-radius:var(--radius);padding:28px;width:380px;box-shadow:0 8px 32px rgba(0,0,0,.2)">
+      <div style="font-family:'DM Serif Display',serif;font-size:18px;margin-bottom:4px">Marcar como vendida</div>
+      <div style="font-size:13px;color:var(--text-2);margin-bottom:20px">${p.direccion}</div>
+      <div style="display:grid;gap:12px">
+        <div class="form-field"><label>Fecha de venta</label><input type="date" id="mv-fecha" value="${hoy}"></div>
+        <div class="form-field"><label>Precio de venta (USD)</label><input type="number" id="mv-precio" placeholder="Ej: 85000" value="${p.precio||''}"></div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:20px">
+        <button onclick="this.closest('div[style*=fixed]').remove()" style="flex:1;padding:10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:transparent;font-size:13px;cursor:pointer;font-family:inherit">Cancelar</button>
+        <button onclick="confirmarVendida(${id})" style="flex:1;padding:10px;background:var(--text);color:white;border:none;border-radius:var(--radius-sm);font-size:13px;font-weight:500;cursor:pointer;font-family:inherit">Confirmar venta</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+}
+
+async function confirmarVendida(id){
+  const fecha = document.getElementById("mv-fecha")?.value;
+  const precio = Number(document.getElementById("mv-precio")?.value) || 0;
+  document.querySelector("div[style*='position:fixed'][style*='z-index:9999']")?.remove();
+  const { error } = await db.from("propiedades").update({ vendida: true, fecha_venta: fecha || null, precio_venta: precio || null }).eq("id", id);
+  if(error){ showToast("Error: " + error.message); return; }
+  const { data: fresh } = await db.from("propiedades").select("*").order("id");
+  if(fresh) props = fresh;
+  closePanel(); showToast("¡Propiedad marcada como vendida ✓"); renderMain();
 }
 
 async function saveProp(){
@@ -1219,25 +1318,78 @@ function inquilinoFields(){
   <div class="form-field"><label>Valor inicial (ARS)</label><input id="f-valinicial" type="number" value="${form.valor_inicial||''}"></div>`;
 }
 
-const PWD = "Jotainm";
+let currentUser = null;
 
-function checkPwd(){
-  const val = document.getElementById("pwd-input").value;
-  if(val === PWD){
-    sessionStorage.setItem("jota_auth","1");
+function logout(){
+  sessionStorage.removeItem("jota_user");
+  location.reload();
+}
+
+function applyRole(user){
+  currentUser = user;
+  // Show user info in sidebar
+  const ui = document.getElementById("user-info");
+  if(ui){ ui.style.display="block"; }
+  document.getElementById("user-name").textContent = user.nombre;
+  document.getElementById("user-rol").textContent = user.rol === "admin" ? "Administrador" : user.rol === "ventas" ? "Socio Ventas" : "Socio Alquileres";
+
+  // Control nav visibility based on role
+  // ventas: propiedades + alquiladas (solo las que están en venta) + alertas
+  // alquileres: solo alquiladas + alertas
+  // admin: todo
+  if(user.rol === "alquileres"){
+    const navProp = document.getElementById("nav-propiedades");
+    if(navProp) navProp.style.display = "none";
+    const navVend = document.getElementById("nav-vendidas");
+    if(navVend) navVend.style.display = "none";
+  }
+}
+
+async function checkLogin(){
+  const email = document.getElementById("email-input").value.trim().toLowerCase();
+  const pwd = document.getElementById("pwd-input").value;
+  const errEl = document.getElementById("login-error");
+  errEl.textContent = "";
+
+  if(!email || !pwd){ errEl.textContent = "Completá email y contraseña"; return; }
+
+  const btn = document.querySelector(".login-btn");
+  btn.textContent = "Ingresando..."; btn.disabled = true;
+
+  try {
+    const dbTemp = supabase.createClient(SUPA_URL, SUPA_KEY);
+    const { data, error } = await dbTemp.from("usuarios")
+      .select("*")
+      .eq("email", email)
+      .eq("password", pwd)
+      .single();
+
+    if(error || !data){
+      errEl.textContent = "Email o contraseña incorrectos";
+      btn.textContent = "Ingresar"; btn.disabled = false;
+      document.getElementById("pwd-input").value = "";
+      return;
+    }
+
+    sessionStorage.setItem("jota_user", JSON.stringify(data));
     document.getElementById("login-wrap").style.display = "none";
+    applyRole(data);
     init();
-  } else {
-    document.getElementById("login-error").textContent = "Contraseña incorrecta";
-    document.getElementById("pwd-input").value = "";
-    document.getElementById("pwd-input").focus();
+  } catch(e) {
+    errEl.textContent = "Error de conexión";
+    btn.textContent = "Ingresar"; btn.disabled = false;
   }
 }
 
 // Verificar si ya está autenticado
-if(sessionStorage.getItem("jota_auth") === "1"){
-  document.getElementById("login-wrap").style.display = "none";
-  init();
+const _savedUser = sessionStorage.getItem("jota_user");
+if(_savedUser){
+  try {
+    const _u = JSON.parse(_savedUser);
+    document.getElementById("login-wrap").style.display = "none";
+    applyRole(_u);
+    init();
+  } catch(e) { sessionStorage.removeItem("jota_user"); }
 }
 </script>
 </body>
