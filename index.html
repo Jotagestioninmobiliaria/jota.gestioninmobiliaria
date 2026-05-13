@@ -216,6 +216,9 @@
       <div class="nav-item" id="nav-alquiladas" onclick="setView('alquiladas')">
         <span class="nav-icon">📋</span> Alquiladas
       </div>
+      <div class="nav-item" id="nav-gestion" onclick="setView('gestion')">
+        <span class="nav-icon">🏠</span> Gestión Alq.
+      </div>
       <div class="nav-item" id="nav-vendidas" onclick="setView('vendidas')">
         <span class="nav-icon">🏆</span> Vendidas
       </div>
@@ -452,7 +455,15 @@ async function init(){
     document.getElementById("db-dot").className = "db-dot";
     document.getElementById("db-label").textContent = "Supabase conectado";
     updateAlertBadge();
-    renderMain();
+    if(currentUser && currentUser.rol === 'alquileres'){
+      currentView = 'gestion';
+      document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+      const ng = document.getElementById('nav-gestion');
+      if(ng) ng.classList.add('active');
+      loadGestion();
+    } else {
+      renderMain();
+    }
     checkAjustesAutomaticos();
   } catch(e) {
     document.getElementById("db-dot").className = "db-dot err";
@@ -467,6 +478,8 @@ function setView(v){
   event.target.closest(".nav-item").classList.add("active");
   if(v === "alertas"){
     document.getElementById("main").innerHTML = renderAlertas();
+  } else if(v === "gestion"){
+    loadGestion();
   } else if(v === "vendidas"){
     renderMain();
   } else {
@@ -1318,6 +1331,275 @@ function inquilinoFields(){
   <div class="form-field"><label>Valor inicial (ARS)</label><input id="f-valinicial" type="number" value="${form.valor_inicial||''}"></div>`;
 }
 
+// =============================================
+// GESTIÓN DE ALQUILERES
+// =============================================
+let gAlq = [], gPagos = [], gMesActual = '';
+
+function getMesActual(){
+  const now = new Date();
+  return `${String(now.getMonth()+1).padStart(2,'0')}-${now.getFullYear()}`;
+}
+
+function fmtMes(periodo){
+  if(!periodo) return '';
+  const [m,y] = periodo.split('-');
+  const meses = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  return `${meses[parseInt(m)]} ${y}`;
+}
+
+function prevMes(p){ const [m,y]=p.split('-').map(Number); return m===1?`12-${y-1}`:`${String(m-1).padStart(2,'0')}-${y}`; }
+function nextMes(p){ const [m,y]=p.split('-').map(Number); return m===12?`01-${y+1}`:`${String(m+1).padStart(2,'0')}-${y}`; }
+
+async function loadGestion(){
+  if(!gMesActual) gMesActual = getMesActual();
+  document.getElementById("main").innerHTML = '<div class="loading"><div class="spinner"></div><span>Cargando gestión...</span></div>';
+  const [r1, r2] = await Promise.all([
+    db.from("alquileres").select("*").order("id"),
+    db.from("pagos_mensuales").select("*").eq("periodo", gMesActual)
+  ]);
+  if(r1.data) gAlq = r1.data;
+  if(r2.data) gPagos = r2.data;
+  renderGestion();
+}
+
+function renderGestion(){
+  const pagosMap = {};
+  gPagos.forEach(p => pagosMap[p.alquiler_id] = p);
+
+  const conContrato = gAlq.filter(a => a.tipo_contrato && a.tipo_contrato !== 'SIN CONTRATO');
+  const pagados = gPagos.filter(p => p.estado === 'pagado').length;
+  const pendientes = conContrato.length - gPagos.filter(p => p.estado === 'pagado' || p.estado === 'parcial').length;
+  const totalCobrado = gPagos.reduce((s,p) => s + (p.monto_cobrado||0), 0);
+
+  // Agrupar por propietario
+  const byProp = {};
+  gAlq.forEach(a => {
+    const k = a.propietario || 'Sin propietario';
+    if(!byProp[k]) byProp[k] = [];
+    byProp[k].push(a);
+  });
+
+  // Calcular mes de aumento
+  const [mesNum] = gMesActual.split('-');
+  const nombresMes = ['','ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
+  const mesNombre = nombresMes[parseInt(mesNum)];
+  const conAumento = gAlq.filter(a => a.mes_aumento && a.mes_aumento.toUpperCase().includes(mesNombre));
+
+  const rows = Object.entries(byProp).map(([prop, items]) => {
+    const itemRows = items.map(a => {
+      const pago = pagosMap[a.id];
+      const estado = pago ? pago.estado : 'pendiente';
+      const tieneContrato = a.tipo_contrato && a.tipo_contrato !== 'SIN CONTRATO';
+      const estadoBadge = !tieneContrato
+        ? `<span style="font-size:11px;color:var(--text-3)">Sin contrato</span>`
+        : estado === 'pagado' ? `<span class="badge" style="background:#EAF3DE;color:#3B6D11">✓ Pagado</span>`
+        : estado === 'parcial' ? `<span class="badge" style="background:#FEF3E2;color:#92400E">Parcial</span>`
+        : estado === 'no_pago' ? `<span class="badge" style="background:#FCEBEB;color:#A32D2D">No pagó</span>`
+        : `<span class="badge" style="background:#F1EFE8;color:#5F5E5A">Pendiente</span>`;
+      const montoFmt = pago?.monto_cobrado ? `$${Number(pago.monto_cobrado).toLocaleString('es-AR')}` : (a.alq_actual ? `$${Number(a.alq_actual).toLocaleString('es-AR')}` : '—');
+      const hayAumento = a.mes_aumento && a.mes_aumento.toUpperCase().includes(mesNombre);
+      return `<tr onclick="openGestionDetail(${a.id})" style="cursor:pointer">
+        <td title="${a.unidad||''}">${a.unidad||'—'} ${hayAumento ? '<span title="Mes de aumento" style="color:var(--accent)">⬆</span>' : ''}</td>
+        <td>${a.inquilino||'—'}</td>
+        <td style="font-size:11px;color:var(--text-2)">${a.tipo_contrato||'—'}</td>
+        <td>${montoFmt}</td>
+        <td>${estadoBadge}</td>
+        <td onclick="event.stopPropagation()">
+          ${tieneContrato ? `<button class="btn-sm" onclick="abrirPago(${a.id})">💰 Cobro</button>` : ''}
+        </td>
+      </tr>`;
+    }).join('');
+    return `<div class="group-section" style="margin-bottom:20px">
+      <div class="group-header">
+        <span>👤</span>
+        <span class="group-title">${prop}</span>
+        <span class="group-count">${items.length}</span>
+      </div>
+      <div class="table-wrap" style="border-radius:0 0 var(--radius) var(--radius);border-top:none">
+        <table>
+          <thead><tr>
+            <th>Unidad</th><th style="width:160px">Inquilino</th>
+            <th style="width:130px">Contrato</th><th style="width:120px">Alquiler</th>
+            <th style="width:110px">Estado</th><th style="width:80px">Acción</th>
+          </tr></thead>
+          <tbody>${itemRows}</tbody>
+        </table>
+      </div>
+    </div>`;
+  }).join('');
+
+  document.getElementById("main").innerHTML = `
+    <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start">
+      <div>
+        <h2>Gestión de Alquileres</h2>
+        <p>${new Date().toLocaleDateString("es-AR",{weekday:"long",year:"numeric",month:"long",day:"numeric"})}</p>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:8px 14px">
+        <button onclick="gMesActual=prevMes(gMesActual);loadGestion()" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--text-2)">‹</button>
+        <span style="font-weight:500;font-size:14px;min-width:130px;text-align:center">${fmtMes(gMesActual)}</span>
+        <button onclick="gMesActual=nextMes(gMesActual);loadGestion()" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--text-2)">›</button>
+      </div>
+    </div>
+    <div class="stats" style="grid-template-columns:repeat(5,1fr)">
+      <div class="stat-card"><div class="stat-label">Total unidades</div><div class="stat-value">${gAlq.length}</div></div>
+      <div class="stat-card"><div class="stat-label">Con contrato</div><div class="stat-value blue">${conContrato.length}</div></div>
+      <div class="stat-card"><div class="stat-label">Pagados</div><div class="stat-value green">${pagados}</div></div>
+      <div class="stat-card"><div class="stat-label">Pendientes</div><div class="stat-value orange">${pendientes}</div></div>
+      <div class="stat-card"><div class="stat-label">Cobrado este mes</div><div class="stat-value accent" style="font-size:16px">$${totalCobrado.toLocaleString('es-AR')}</div></div>
+    </div>
+    ${conAumento.length > 0 ? `<div style="background:#FFFDF5;border:1px solid var(--accent);border-radius:var(--radius);padding:12px 16px;margin-bottom:20px;font-size:13px">
+      <span style="color:var(--accent);font-weight:600">⬆ ${conAumento.length} unidad${conAumento.length!==1?'es':''} con aumento en ${fmtMes(gMesActual)}:</span>
+      <span style="color:var(--text-2);margin-left:8px">${conAumento.map(a=>a.unidad).join(' · ')}</span>
+    </div>` : ''}
+    <div class="toolbar">
+      <div class="search-wrap"><span class="search-icon">⌕</span><input placeholder="Buscar unidad, inquilino, propietario..." oninput="filtrarGestion(this.value)"></div>
+    </div>
+    <div id="gestion-list">${rows}</div>`;
+}
+
+function filtrarGestion(q){
+  const s = q.toLowerCase();
+  document.querySelectorAll('#gestion-list tbody tr').forEach(tr => {
+    tr.style.display = tr.textContent.toLowerCase().includes(s) ? '' : 'none';
+  });
+}
+
+function abrirPago(id){
+  const a = gAlq.find(x => x.id === id);
+  if(!a) return;
+  const pago = gPagos.find(p => p.alquiler_id === id);
+  const modal = document.createElement('div');
+  modal.id = 'pago-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:9999';
+  modal.innerHTML = `
+    <div style="background:var(--surface);border-radius:var(--radius);padding:28px;width:400px;box-shadow:0 8px 32px rgba(0,0,0,.2)">
+      <div style="font-family:'DM Serif Display',serif;font-size:18px;margin-bottom:4px">Registrar cobro</div>
+      <div style="font-size:13px;color:var(--text-2);margin-bottom:20px">${a.unidad} · ${fmtMes(gMesActual)}</div>
+      <div style="display:grid;gap:12px">
+        <div class="form-field">
+          <label>Estado</label>
+          <select id="pm-estado">
+            <option value="pagado" ${pago?.estado==='pagado'?'selected':''}>✓ Pagado</option>
+            <option value="parcial" ${pago?.estado==='parcial'?'selected':''}>Parcial</option>
+            <option value="no_pago" ${pago?.estado==='no_pago'?'selected':''}>No pagó</option>
+            <option value="pendiente" ${pago?.estado==='pendiente'?'selected':''}>Pendiente</option>
+          </select>
+        </div>
+        <div class="form-field">
+          <label>Monto cobrado ($)</label>
+          <input type="number" id="pm-monto" value="${pago?.monto_cobrado || a.alq_actual || ''}" placeholder="Ej: 511622">
+        </div>
+        <div class="form-field">
+          <label>Fecha de pago</label>
+          <input type="date" id="pm-fecha" value="${pago?.fecha_pago || new Date().toISOString().split('T')[0]}">
+        </div>
+        <div class="form-field">
+          <label>Observaciones</label>
+          <textarea id="pm-obs" style="height:60px">${pago?.observaciones||''}</textarea>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:20px">
+        <button onclick="document.getElementById('pago-modal').remove()" style="flex:1;padding:10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:transparent;font-size:13px;cursor:pointer;font-family:inherit">Cancelar</button>
+        <button onclick="guardarPago(${id}${pago?','+pago.id:''})" style="flex:1;padding:10px;background:var(--text);color:white;border:none;border-radius:var(--radius-sm);font-size:13px;font-weight:500;cursor:pointer;font-family:inherit">Guardar</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+}
+
+async function guardarPago(alqId, pagoId=null){
+  const estado = document.getElementById('pm-estado')?.value;
+  const monto = parseFloat(document.getElementById('pm-monto')?.value) || null;
+  const fecha = document.getElementById('pm-fecha')?.value || null;
+  const obs = document.getElementById('pm-obs')?.value || null;
+  document.getElementById('pago-modal')?.remove();
+
+  if(pagoId){
+    await db.from('pagos_mensuales').update({estado,monto_cobrado:monto,fecha_pago:fecha,observaciones:obs}).eq('id',pagoId);
+  } else {
+    await db.from('pagos_mensuales').insert({alquiler_id:alqId,periodo:gMesActual,estado,monto_cobrado:monto,fecha_pago:fecha,observaciones:obs});
+  }
+  showToast('Cobro registrado ✓');
+  const r = await db.from('pagos_mensuales').select('*').eq('periodo',gMesActual);
+  if(r.data) gPagos = r.data;
+  renderGestion();
+}
+
+async function openGestionDetail(id){
+  const a = gAlq.find(x => x.id === id);
+  if(!a) return;
+  const { data: historial } = await db.from('pagos_mensuales').select('*').eq('alquiler_id', id).order('periodo', {ascending:false}).limit(12);
+  const pago = gPagos.find(p => p.alquiler_id === id);
+
+  const field = (l,v) => v ? `<div class="dg"><div class="dg-l">${l}</div><div class="dg-v">${v}</div></div>` : '';
+
+  document.getElementById('panel-content').innerHTML = `
+    <div class="panel-header">
+      <span class="panel-title">${a.unidad||'Unidad'}</span>
+      <button class="btn-close" onclick="closePanel()">✕</button>
+    </div>
+    <div class="panel-body">
+      <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+        <span class="badge b-${a.tipo==='DPTO'?'Departamento':a.tipo}">${a.tipo||'—'}</span>
+        ${a.tipo_contrato ? `<span class="badge" style="background:var(--bg);color:var(--text-2)">${a.tipo_contrato}</span>` : ''}
+      </div>
+
+      <div class="section-label">👤 Personas</div>
+      <div class="detail-grid" style="margin-bottom:16px">
+        ${field('Propietario', a.propietario)}
+        ${field('Inquilino', a.inquilino)}
+        ${field('Tel. inquilino', a.tel_inquilino)}
+        ${field('Email inquilino', a.email_inquilino)}
+        ${field('Administración', a.adm_contacto)}
+        ${field('Tel. admin', a.tel_adm)}
+      </div>
+
+      <div class="section-label">📋 Contrato</div>
+      <div class="detail-grid" style="margin-bottom:16px">
+        ${field('Inicio', a.inicio_contrato ? new Date(a.inicio_contrato).toLocaleDateString('es-AR') : null)}
+        ${field('Fin', a.fin_contrato ? new Date(a.fin_contrato).toLocaleDateString('es-AR') : null)}
+        ${field('Alq. inicial', a.alq_inicial ? '$'+Number(a.alq_inicial).toLocaleString('es-AR') : null)}
+        ${field('Alq. actual', a.alq_actual ? '$'+Number(a.alq_actual).toLocaleString('es-AR') : null)}
+        ${field('Comisión', a.comision_pct ? (a.comision_pct*100)+'%' : null)}
+        ${field('Comisión adm.', a.comision_adm ? '$'+Number(a.comision_adm).toLocaleString('es-AR') : null)}
+        ${field('Mes aumento', a.mes_aumento)}
+        ${field('Seguro', a.seguro)}
+      </div>
+
+      ${(a.tgi_cuenta||a.api||a.aguas||a.gas_cliente||a.epe_cliente) ? `
+      <div class="section-label">⚡ Servicios</div>
+      <div class="detail-grid" style="margin-bottom:16px">
+        ${field('TGI cuenta', a.tgi_cuenta)}
+        ${field('TGI gestión', a.tgi_gestion)}
+        ${field('API', a.api)}
+        ${field('Aguas', a.aguas)}
+        ${field('Gas cliente', a.gas_cliente)}
+        ${field('Gas persona', a.gas_persona)}
+        ${field('EPE cliente', a.epe_cliente)}
+        ${field('EPE plan', a.epe_plan)}
+      </div>` : ''}
+
+      <div class="section-label">💰 Últimos 12 meses</div>
+      ${historial && historial.length > 0 ? historial.map(p => {
+        const col = p.estado==='pagado'?'var(--green)':p.estado==='parcial'?'var(--accent)':p.estado==='no_pago'?'var(--red)':'var(--text-3)';
+        return `<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;background:var(--bg);border-radius:6px;margin-bottom:6px;font-size:13px">
+          <span style="font-weight:500">${fmtMes(p.periodo)}</span>
+          <span style="color:${col};font-weight:600">${p.estado==='pagado'?'✓ Pagado':p.estado==='parcial'?'Parcial':p.estado==='no_pago'?'No pagó':'Pendiente'}</span>
+          <span>${p.monto_cobrado ? '$'+Number(p.monto_cobrado).toLocaleString('es-AR') : '—'}</span>
+          ${p.observaciones ? `<span style="font-size:11px;color:var(--text-3)">${p.observaciones}</span>` : ''}
+        </div>`;
+      }).join('') : '<div style="font-size:13px;color:var(--text-3);text-align:center;padding:16px">Sin registros de pago aún</div>'}
+    </div>
+    <div class="detail-actions">
+      ${a.tipo_contrato && a.tipo_contrato !== 'SIN CONTRATO' ? `<button class="btn-primary" onclick="closePanel();abrirPago(${a.id})">💰 Registrar cobro</button>` : ''}
+      <button class="btn-secondary" onclick="closePanel()">Cerrar</button>
+    </div>`;
+  document.getElementById('panel').classList.add('open');
+  document.getElementById('overlay').classList.add('open');
+}
+
+// =============================================
+
 let currentUser = null;
 
 function logout(){
@@ -1342,6 +1624,14 @@ function applyRole(user){
     if(navProp) navProp.style.display = "none";
     const navVend = document.getElementById("nav-vendidas");
     if(navVend) navVend.style.display = "none";
+    const navAlq = document.getElementById("nav-alquiladas");
+    if(navAlq) navAlq.style.display = "none";
+    const navAl = document.getElementById("nav-alertas");
+    if(navAl) navAl.style.display = "none";
+  }
+  if(user.rol === "ventas"){
+    const navG = document.getElementById("nav-gestion");
+    if(navG) navG.style.display = "none";
   }
 }
 
