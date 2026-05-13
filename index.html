@@ -1368,8 +1368,21 @@ function renderGestion(){
   gPagos.forEach(p => pagosMap[p.alquiler_id] = p);
 
   const conImporte = gAlq.filter(a => a.alq_actual && a.alq_actual > 0 && !a.parent_id);
+  const sinInquilino = gAlq.filter(a => !a.parent_id && a.alq_actual > 0 && (!a.inquilino || a.inquilino.trim() === ''));
   const pagados = gPagos.filter(p => p.estado === 'pagado').length;
   const pendientes = conImporte.length - gPagos.filter(p => p.estado === 'pagado' || p.estado === 'parcial').length;
+
+  const pagosConAlq = gPagos.map(p => {
+    const alq = gAlq.find(a => a.id === p.alquiler_id);
+    return { ...p, propietario: alq?.propietario };
+  });
+  const cobradoClientes = pagosConAlq
+    .filter(p => p.propietario && p.propietario.toLowerCase() !== 'fideicomiso' && p.monto_cobrado)
+    .reduce((s, p) => s + (p.monto_cobrado || 0), 0);
+  const cobradoFideicomiso = pagosConAlq
+    .filter(p => p.propietario && p.propietario.toLowerCase() === 'fideicomiso' && p.monto_cobrado)
+    .reduce((s, p) => s + (p.monto_cobrado || 0), 0);
+  const cobradoTotal = cobradoClientes + cobradoFideicomiso;
   const totalCobrado = gPagos.reduce((s,p) => s + (p.monto_cobrado||0), 0);
 
   // Agrupar por propietario
@@ -1442,12 +1455,14 @@ function renderGestion(){
         <button onclick="gMesActual=nextMes(gMesActual);loadGestion()" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--text-2)">›</button>
       </div>
     </div>
-    <div class="stats" style="grid-template-columns:repeat(5,1fr)">
+    <div class="stats" style="grid-template-columns:repeat(7,1fr)">
       <div class="stat-card"><div class="stat-label">Total unidades</div><div class="stat-value">${gAlq.filter(a => !a.parent_id).length}</div></div>
-      <div class="stat-card"><div class="stat-label">Con importe</div><div class="stat-value blue">${conImporte.length}</div></div>
+      <div class="stat-card"><div class="stat-label">Pend. alquilar</div><div class="stat-value orange">${sinInquilino.length}</div></div>
       <div class="stat-card"><div class="stat-label">Pagados</div><div class="stat-value green">${pagados}</div></div>
-      <div class="stat-card"><div class="stat-label">Pendientes</div><div class="stat-value orange">${pendientes}</div></div>
-      <div class="stat-card"><div class="stat-label">Cobrado este mes</div><div class="stat-value accent" style="font-size:16px">$${totalCobrado.toLocaleString('es-AR')}</div></div>
+      <div class="stat-card"><div class="stat-label">Pendientes</div><div class="stat-value" style="color:var(--red)">${pendientes}</div></div>
+      <div class="stat-card"><div class="stat-label">Cobrado clientes</div><div class="stat-value accent" style="font-size:13px">$${cobradoClientes.toLocaleString('es-AR')}</div></div>
+      <div class="stat-card"><div class="stat-label">Cobrado fideicomiso</div><div class="stat-value accent" style="font-size:13px">$${cobradoFideicomiso.toLocaleString('es-AR')}</div></div>
+      <div class="stat-card"><div class="stat-label">Cobrado este mes</div><div class="stat-value accent" style="font-size:13px">$${cobradoTotal.toLocaleString('es-AR')}</div></div>
     </div>
     ${conAumento.length > 0 ? `<div style="background:#FFFDF5;border:1px solid var(--accent);border-radius:var(--radius);padding:12px 16px;margin-bottom:20px;font-size:13px">
       <span style="color:var(--accent);font-weight:600">⬆ ${conAumento.length} unidad${conAumento.length!==1?'es':''} con aumento en ${fmtMes(gMesActual)}:</span>
