@@ -1368,7 +1368,7 @@ function renderGestion(){
   gPagos.forEach(p => pagosMap[p.alquiler_id] = p);
 
   const conImporte = gAlq.filter(a => a.alq_actual && a.alq_actual > 0 && !a.parent_id);
-  const sinInquilino = gAlq.filter(a => !a.parent_id && a.alq_actual > 0 && (!a.inquilino || a.inquilino.trim() === ''));
+  const sinInquilino = gAlq.filter(a => !a.parent_id && (!a.inquilino || a.inquilino.trim() === ''));
   const pagados = gPagos.filter(p => p.estado === 'pagado').length;
   const pendientes = conImporte.length - gPagos.filter(p => p.estado === 'pagado' || p.estado === 'parcial').length;
 
