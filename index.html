@@ -1367,7 +1367,7 @@ function renderGestion(){
   const pagosMap = {};
   gPagos.forEach(p => pagosMap[p.alquiler_id] = p);
 
-  const conImporte = gAlq.filter(a => a.alq_actual && a.alq_actual > 0);
+  const conImporte = gAlq.filter(a => a.alq_actual && a.alq_actual > 0 && !a.parent_id);
   const pagados = gPagos.filter(p => p.estado === 'pagado').length;
   const pendientes = conImporte.length - gPagos.filter(p => p.estado === 'pagado' || p.estado === 'parcial').length;
   const totalCobrado = gPagos.reduce((s,p) => s + (p.monto_cobrado||0), 0);
@@ -1415,7 +1415,7 @@ function renderGestion(){
       <div class="group-header">
         <span>👤</span>
         <span class="group-title">${prop}</span>
-        <span class="group-count">${items.length}</span>
+        <span class="group-count">${items.filter(a => !a.parent_id).length}</span>
       </div>
       <div class="table-wrap" style="border-radius:0 0 var(--radius) var(--radius);border-top:none">
         <table>
@@ -1443,7 +1443,7 @@ function renderGestion(){
       </div>
     </div>
     <div class="stats" style="grid-template-columns:repeat(5,1fr)">
-      <div class="stat-card"><div class="stat-label">Total unidades</div><div class="stat-value">${gAlq.length}</div></div>
+      <div class="stat-card"><div class="stat-label">Total unidades</div><div class="stat-value">${gAlq.filter(a => !a.parent_id).length}</div></div>
       <div class="stat-card"><div class="stat-label">Con importe</div><div class="stat-value blue">${conImporte.length}</div></div>
       <div class="stat-card"><div class="stat-label">Pagados</div><div class="stat-value green">${pagados}</div></div>
       <div class="stat-card"><div class="stat-label">Pendientes</div><div class="stat-value orange">${pendientes}</div></div>
