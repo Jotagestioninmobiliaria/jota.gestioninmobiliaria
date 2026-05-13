@@ -1367,9 +1367,9 @@ function renderGestion(){
   const pagosMap = {};
   gPagos.forEach(p => pagosMap[p.alquiler_id] = p);
 
-  const conContrato = gAlq.filter(a => a.tipo_contrato && a.tipo_contrato !== 'SIN CONTRATO');
+  const conImporte = gAlq.filter(a => a.alq_actual && a.alq_actual > 0);
   const pagados = gPagos.filter(p => p.estado === 'pagado').length;
-  const pendientes = conContrato.length - gPagos.filter(p => p.estado === 'pagado' || p.estado === 'parcial').length;
+  const pendientes = conImporte.length - gPagos.filter(p => p.estado === 'pagado' || p.estado === 'parcial').length;
   const totalCobrado = gPagos.reduce((s,p) => s + (p.monto_cobrado||0), 0);
 
   // Agrupar por propietario
@@ -1391,8 +1391,9 @@ function renderGestion(){
       const pago = pagosMap[a.id];
       const estado = pago ? pago.estado : 'pendiente';
       const tieneContrato = a.tipo_contrato && a.tipo_contrato !== 'SIN CONTRATO';
-      const estadoBadge = !tieneContrato
-        ? `<span style="font-size:11px;color:var(--text-3)">Sin contrato</span>`
+      const tieneImporte = a.alq_actual && a.alq_actual > 0;
+      const estadoBadge = !tieneImporte
+        ? `<span style="font-size:11px;color:var(--text-3)">Sin importe</span>`
         : estado === 'pagado' ? `<span class="badge" style="background:#EAF3DE;color:#3B6D11">✓ Pagado</span>`
         : estado === 'parcial' ? `<span class="badge" style="background:#FEF3E2;color:#92400E">Parcial</span>`
         : estado === 'no_pago' ? `<span class="badge" style="background:#FCEBEB;color:#A32D2D">No pagó</span>`
@@ -1406,7 +1407,7 @@ function renderGestion(){
         <td>${montoFmt}</td>
         <td>${estadoBadge}</td>
         <td onclick="event.stopPropagation()">
-          ${tieneContrato ? `<button class="btn-sm" onclick="abrirPago(${a.id})">💰 Cobro</button>` : ''}
+          ${tieneImporte ? `<button class="btn-sm" onclick="abrirPago(${a.id})">💰 Cobro</button>` : ''}
         </td>
       </tr>`;
     }).join('');
@@ -1443,7 +1444,7 @@ function renderGestion(){
     </div>
     <div class="stats" style="grid-template-columns:repeat(5,1fr)">
       <div class="stat-card"><div class="stat-label">Total unidades</div><div class="stat-value">${gAlq.length}</div></div>
-      <div class="stat-card"><div class="stat-label">Con contrato</div><div class="stat-value blue">${conContrato.length}</div></div>
+      <div class="stat-card"><div class="stat-label">Con importe</div><div class="stat-value blue">${conImporte.length}</div></div>
       <div class="stat-card"><div class="stat-label">Pagados</div><div class="stat-value green">${pagados}</div></div>
       <div class="stat-card"><div class="stat-label">Pendientes</div><div class="stat-value orange">${pendientes}</div></div>
       <div class="stat-card"><div class="stat-label">Cobrado este mes</div><div class="stat-value accent" style="font-size:16px">$${totalCobrado.toLocaleString('es-AR')}</div></div>
@@ -1591,7 +1592,7 @@ async function openGestionDetail(id){
       }).join('') : '<div style="font-size:13px;color:var(--text-3);text-align:center;padding:16px">Sin registros de pago aún</div>'}
     </div>
     <div class="detail-actions">
-      ${a.tipo_contrato && a.tipo_contrato !== 'SIN CONTRATO' ? `<button class="btn-primary" onclick="closePanel();abrirPago(${a.id})">💰 Registrar cobro</button>` : ''}
+      ${a.alq_actual > 0 ? `<button class="btn-primary" onclick="closePanel();abrirPago(${a.id})">💰 Registrar cobro</button>` : ''}
       <button class="btn-secondary" onclick="closePanel()">Cerrar</button>
     </div>`;
   document.getElementById('panel').classList.add('open');
