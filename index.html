@@ -1470,8 +1470,70 @@ function renderGestion(){
     </div>` : ''}
     <div class="toolbar">
       <div class="search-wrap"><span class="search-icon">⌕</span><input placeholder="Buscar unidad, inquilino, propietario..." oninput="filtrarGestion(this.value)"></div>
+      <button class="btn-primary" onclick="abrirCobroRapido()" style="white-space:nowrap">⚡ Cobro rápido</button>
     </div>
     <div id="gestion-list">${rows}</div>`;
+}
+
+function abrirCobroRapido(){
+  const modal = document.createElement('div');
+  modal.id = 'cobro-rapido-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:flex-start;justify-content:center;z-index:9999;padding:20px;overflow-y:auto';
+  modal.innerHTML = `
+    <div style="background:var(--surface);border-radius:var(--radius);width:100%;max-width:480px;box-shadow:0 8px 40px rgba(0,0,0,.25);margin-top:20px">
+      <div style="padding:20px 20px 0;display:flex;justify-content:space-between;align-items:center">
+        <div style="font-family:'DM Serif Display',serif;font-size:20px">⚡ Cobro rápido</div>
+        <button onclick="document.getElementById('cobro-rapido-modal').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-3)">✕</button>
+      </div>
+      <div style="padding:16px 20px">
+        <input id="cr-search" type="text" placeholder="Nombre inquilino o dirección..."
+          style="width:100%;padding:14px;font-size:16px;border:2px solid var(--accent);border-radius:var(--radius-sm);font-family:inherit;background:var(--bg);outline:none;box-sizing:border-box"
+          oninput="filtrarCobroRapido(this.value)" autocomplete="off">
+      </div>
+      <div id="cr-results" style="padding:0 12px 12px;max-height:60vh;overflow-y:auto"></div>
+    </div>`;
+  document.body.appendChild(modal);
+  setTimeout(() => document.getElementById('cr-search')?.focus(), 100);
+}
+
+function filtrarCobroRapido(q){
+  const s = q.toLowerCase().trim();
+  const container = document.getElementById('cr-results');
+  if(!container) return;
+  if(s.length < 2){ container.innerHTML = '<div style="text-align:center;color:var(--text-3);padding:20px;font-size:13px">Escribí al menos 2 letras</div>'; return; }
+
+  const matches = gAlq.filter(a =>
+    a.alq_actual > 0 && (
+      (a.inquilino||'').toLowerCase().includes(s) ||
+      (a.unidad||'').toLowerCase().includes(s) ||
+      (a.propietario||'').toLowerCase().includes(s)
+    )
+  ).slice(0, 10);
+
+  if(matches.length === 0){ container.innerHTML = '<div style="text-align:center;color:var(--text-3);padding:20px;font-size:13px">No se encontraron unidades</div>'; return; }
+
+  const pagosMap = {};
+  gPagos.forEach(p => pagosMap[p.alquiler_id] = p);
+
+  container.innerHTML = matches.map(a => {
+    const pago = pagosMap[a.id];
+    const estadoColor = pago?.estado === 'pagado' ? '#3B6D11' : pago?.estado === 'parcial' ? '#92400E' : '#A32D2D';
+    const estadoTxt = pago?.estado === 'pagado' ? '✓ Pagado' : pago?.estado === 'parcial' ? 'Parcial' : 'Pendiente';
+    return `<div onclick="seleccionarCobroRapido(${a.id})"
+      style="padding:14px;margin-bottom:8px;background:var(--bg);border-radius:var(--radius-sm);cursor:pointer;border:1px solid var(--border);active:opacity:.8">
+      <div style="font-weight:600;font-size:15px;margin-bottom:3px">${a.inquilino || '—'}</div>
+      <div style="font-size:12px;color:var(--text-2);margin-bottom:6px">${a.unidad}</div>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:14px;font-weight:500">$${Number(a.alq_actual).toLocaleString('es-AR')}</span>
+        <span style="font-size:12px;color:${estadoColor};font-weight:600">${estadoTxt}</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function seleccionarCobroRapido(id){
+  document.getElementById('cobro-rapido-modal')?.remove();
+  abrirPago(id);
 }
 
 function filtrarGestion(q){
@@ -1489,13 +1551,13 @@ function abrirPago(id){
   modal.id = 'pago-modal';
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:9999';
   modal.innerHTML = `
-    <div style="background:var(--surface);border-radius:var(--radius);padding:28px;width:400px;box-shadow:0 8px 32px rgba(0,0,0,.2)">
+    <div style="background:var(--surface);border-radius:var(--radius);padding:24px;width:100%;max-width:420px;box-shadow:0 8px 32px rgba(0,0,0,.2)">
       <div style="font-family:'DM Serif Display',serif;font-size:18px;margin-bottom:4px">Registrar cobro</div>
       <div style="font-size:13px;color:var(--text-2);margin-bottom:20px">${a.unidad} · ${fmtMes(gMesActual)}</div>
-      <div style="display:grid;gap:12px">
+      <div style="display:grid;gap:14px">
         <div class="form-field">
           <label>Estado</label>
-          <select id="pm-estado">
+          <select id="pm-estado" style="font-size:16px;padding:12px">
             <option value="pagado" ${pago?.estado==='pagado'?'selected':''}>✓ Pagado</option>
             <option value="parcial" ${pago?.estado==='parcial'?'selected':''}>Parcial</option>
             <option value="no_pago" ${pago?.estado==='no_pago'?'selected':''}>No pagó</option>
@@ -1504,20 +1566,20 @@ function abrirPago(id){
         </div>
         <div class="form-field">
           <label>Monto cobrado ($)</label>
-          <input type="number" id="pm-monto" value="${pago?.monto_cobrado || a.alq_actual || ''}" placeholder="Ej: 511622">
+          <input type="number" inputmode="numeric" id="pm-monto" value="${pago?.monto_cobrado || a.alq_actual || ''}" placeholder="Ej: 511622" style="font-size:18px;padding:12px;font-weight:600">
         </div>
         <div class="form-field">
           <label>Fecha de pago</label>
-          <input type="date" id="pm-fecha" value="${pago?.fecha_pago || new Date().toISOString().split('T')[0]}">
+          <input type="date" id="pm-fecha" value="${pago?.fecha_pago || new Date().toISOString().split('T')[0]}" style="font-size:16px;padding:12px">
         </div>
         <div class="form-field">
           <label>Observaciones</label>
-          <textarea id="pm-obs" style="height:60px">${pago?.observaciones||''}</textarea>
+          <textarea id="pm-obs" style="height:60px;font-size:14px">${pago?.observaciones||''}</textarea>
         </div>
       </div>
       <div style="display:flex;gap:10px;margin-top:20px">
-        <button onclick="document.getElementById('pago-modal').remove()" style="flex:1;padding:10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:transparent;font-size:13px;cursor:pointer;font-family:inherit">Cancelar</button>
-        <button onclick="guardarPago(${id}${pago?','+pago.id:''})" style="flex:1;padding:10px;background:var(--text);color:white;border:none;border-radius:var(--radius-sm);font-size:13px;font-weight:500;cursor:pointer;font-family:inherit">Guardar</button>
+        <button onclick="document.getElementById('pago-modal').remove()" style="flex:1;padding:14px;border:1px solid var(--border);border-radius:var(--radius-sm);background:transparent;font-size:15px;cursor:pointer;font-family:inherit">Cancelar</button>
+        <button onclick="guardarPago(${id}${pago?','+pago.id:''})" style="flex:2;padding:14px;background:var(--text);color:white;border:none;border-radius:var(--radius-sm);font-size:15px;font-weight:600;cursor:pointer;font-family:inherit">✓ Confirmar</button>
       </div>
     </div>`;
   document.body.appendChild(modal);
