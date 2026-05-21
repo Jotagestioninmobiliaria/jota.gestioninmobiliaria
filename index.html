@@ -130,10 +130,15 @@
   .inq-card { background: var(--bg); border-radius: var(--radius-sm); padding: 14px; }
   .inq-name { font-weight: 600; margin-bottom: 8px; font-size: 14px; }
   .inq-row { font-size: 13px; color: var(--text-2); margin-bottom: 4px; }
-  .detail-actions { display: flex; gap: 10px; padding: 20px 24px; border-top: 1px solid var(--border); background: var(--surface); position: sticky; bottom: 0; }
+  .detail-actions { display: flex; gap: 10px; padding: 20px 24px; border-top: 1px solid var(--border); background: var(--surface); position: sticky; bottom: 0; flex-wrap: wrap; }
   .btn-secondary { padding: 9px 16px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: transparent; color: var(--text); font-size: 13px; font-family: inherit; cursor: pointer; }
   .btn-danger { padding: 9px 16px; border: 1px solid #F09595; border-radius: var(--radius-sm); background: transparent; color: var(--red); font-size: 13px; font-family: inherit; cursor: pointer; }
   .btn-danger:hover { background: var(--red-bg); }
+
+  /* btn-pdf: accent-outlined button */
+  .btn-pdf { padding: 9px 16px; border: 1px solid var(--accent); border-radius: var(--radius-sm); background: transparent; color: var(--accent); font-size: 13px; font-family: inherit; cursor: pointer; transition: all .15s; white-space: nowrap; }
+  .btn-pdf:hover { background: #FBF4E6; }
+  .btn-pdf:disabled { opacity: .5; cursor: default; }
 
   /* Form */
   .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
@@ -187,6 +192,10 @@
   .login-btn { width: 100%; padding: 11px; background: var(--text); color: white; border: none; border-radius: var(--radius-sm); font-size: 14px; font-weight: 500; font-family: inherit; cursor: pointer; transition: opacity .15s; }
   .login-btn:hover { opacity: .85; }
   .login-error { font-size: 12px; color: var(--red); margin-top: 8px; min-height: 18px; }
+
+  /* Toast */
+  .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(10px); background: var(--text); color: white; padding: 10px 20px; border-radius: var(--radius-sm); font-size: 13px; opacity: 0; transition: all .2s; pointer-events: none; z-index: 9999; white-space: nowrap; }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 </style>
 </head>
 <body>
@@ -304,9 +313,235 @@ function fmtARS(n){ return n > 0 ? "$" + Number(n).toLocaleString("es-AR") : "�
 function showToast(m){ const t = document.getElementById("toast"); t.textContent = m; t.classList.add("show"); setTimeout(() => t.classList.remove("show"), 2200); }
 function emptyForm(){ return {tipo:"Departamento",barrio:"Centro",direccion:"",precio:"",moneda:"USD",expensas:"",sup_total:"",sup_cubierta:"",sup_terreno:"",ambientes:"",dormitorios:"",baños:"",antiguedad:"",condicion:"",disposicion:"",situacion:"Vacía",apto_credito:"",fin_permuta:"",alquilado:false,ini_contrato:"",fin_contrato:"",alq_mensual:"",ajuste:"",observaciones:"",inquilino:"",telefono:"",mail:"",valor_inicial:"",propietario:"",tel_propietario:"",mail_propietario:""}; }
 
+// =============================================
+// FICHA PDF
+// =============================================
+
+// fichaPropiedad: abre nueva ventana con ficha estilo MAO Propiedades
+async function fichaPropiedad(propId) {
+  const p = props.find(x => x.id === propId);
+  if (!p) return;
+  const btn = document.getElementById('btn-ficha-' + propId);
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Cargando...'; }
+  showToast('Preparando ficha...');
+  let fotos = [];
+  try {
+    const { data } = await db.storage.from('propiedades-fotos').list('prop-' + propId + '/');
+    fotos = (data || [])
+      .filter(function(f){ return f.name && f.name !== '.emptyFolderPlaceholder'; })
+      .map(function(f){ return db.storage.from('propiedades-fotos').getPublicUrl('prop-' + propId + '/' + f.name).data.publicUrl; });
+  } catch(e) {}
+  const win = window.open('', '_blank');
+  if (!win) { showToast('Permití popups para abrir la ficha'); if(btn){btn.disabled=false;btn.textContent='📄 Ver ficha';} return; }
+  win.document.write(generarFichaHTML(p, fotos));
+  win.document.close();
+  if (btn) { btn.disabled = false; btn.textContent = '📄 Ver ficha'; }
+}
+
+function generarFichaHTML(p, fotos) {
+  var priceStr = 'USD ' + Number(p.precio).toLocaleString('es-AR');
+  var expStr = p.expensas > 0 ? '$' + Number(p.expensas).toLocaleString('es-AR') : '';
+  function h(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+  var obs = (p.observaciones||'').toLowerCase();
+  var ams = [];
+  if(obs.indexOf('pileta')>-1||obs.indexOf('piscina')>-1) ams.push({i:'🏊',l:'Pileta'});
+  if(obs.indexOf('hidromasaje')>-1) ams.push({i:'♨️',l:'Hidromasaje'});
+  if(obs.indexOf('parrilla')>-1) ams.push({i:'🔥',l:'Parrilla'});
+  if(obs.indexOf('quincho')>-1) ams.push({i:'🏡',l:'Quincho'});
+  if(obs.indexOf('gimnasio')>-1) ams.push({i:'💪',l:'Gimnasio'});
+  if(obs.indexOf('solarium')>-1) ams.push({i:'☀️',l:'Solarium'});
+  if(obs.indexOf('cochera')>-1) ams.push({i:'🚗',l:'Cochera'});
+  if(obs.indexOf('ascensor')>-1) ams.push({i:'🛗',l:'Ascensor'});
+  if(obs.indexOf('reconocimiento facial')>-1) ams.push({i:'🔐',l:'Acceso biométrico'});
+  if(obs.indexOf('aire acondicionado')>-1||obs.indexOf(' aa ')>-1||obs.indexOf('a/a')>-1) ams.push({i:'❄️',l:'Aire acondicionado'});
+  if(obs.indexOf('calefacción central')>-1||obs.indexOf('calefaccion central')>-1) ams.push({i:'🌡️',l:'Calefacción central'});
+  if(obs.indexOf('calefacción por gas')>-1) ams.push({i:'🌡️',l:'Calefacción por gas'});
+  if(obs.indexOf('dvh')>-1) ams.push({i:'🪟',l:'DVH'});
+  if(obs.indexOf('barrio cerrado')>-1) ams.push({i:'🏘️',l:'Barrio cerrado'});
+  if(obs.indexOf('seguridad 24')>-1) ams.push({i:'👮',l:'Seguridad 24hs'});
+  if(obs.indexOf('riego automático')>-1) ams.push({i:'💧',l:'Riego automático'});
+  if(p.apto_credito==='Sí'||p.apto_credito==='Si') ams.push({i:'✅',l:'Apto crédito'});
+  if(p.fin_permuta) ams.push({i:'⇄',l:'Permuta'});
+
+  var feats = [];
+  if(p.dormitorios>0) feats.push({v:p.dormitorios,l:'Dormitorios'});
+  if(p.baños>0) feats.push({v:p.baños,l:'Baños'});
+  if(p.ambientes>0) feats.push({v:p.ambientes,l:'Ambientes'});
+  if(p.sup_total>0) feats.push({v:p.sup_total+' m²',l:'Sup. total'});
+  if(p.sup_cubierta>0) feats.push({v:p.sup_cubierta+' m²',l:'Cubierta'});
+  if(p.sup_terreno>0) feats.push({v:p.sup_terreno+' m²',l:'Terreno'});
+
+  var hls = [];
+  if(p.antiguedad==='A estrenar') hls.push('A estrenar');
+  if(p.condicion==='Excelente') hls.push('Condición excelente');
+  if(p.disposicion) hls.push('Disposición ' + p.disposicion);
+  if(ams.filter(function(a){return a.l==='Pileta';}).length) hls.push('Amenities premium');
+  if(ams.filter(function(a){return a.l==='Acceso biométrico';}).length) hls.push('Acceso por reconocimiento facial');
+  if(ams.filter(function(a){return a.l==='Barrio cerrado';}).length) hls.push('Barrio cerrado');
+  if(p.apto_credito==='Sí') hls.push('Apto crédito hipotecario');
+
+  var slidesHtml = fotos.length > 0
+    ? fotos.map(function(url,i){ return '<div class="slide'+(i===0?' active':'')+'" data-i="'+i+'"><img src="'+h(url)+'" alt="Foto '+(i+1)+'" loading="'+(i<3?'eager':'lazy')+'"></div>'; }).join('')
+    : '<div class="slide active"><div class="no-photo">Sin fotografías cargadas</div></div>';
+  var thumbsHtml = fotos.length > 1
+    ? fotos.map(function(url,i){ return '<div class="thumb'+(i===0?' active':'')+'" onclick="goTo('+i+')"><img src="'+h(url)+'" alt="" loading="lazy"></div>'; }).join('')
+    : '';
+  var featsHtml = feats.map(function(f){ return '<div class="feat-card"><span class="feat-val">'+f.v+'</span><span class="feat-lbl">'+h(f.l)+'</span></div>'; }).join('');
+  var amsHtml = ams.map(function(a){ return '<span class="tag">'+a.i+'&nbsp;&nbsp;'+h(a.l)+'</span>'; }).join('');
+  var hlsHtml = hls.map(function(x){ return '<li><span class="dot"></span>'+h(x)+'</li>'; }).join('');
+  var galHtml = fotos.map(function(url,i){ return '<div class="gal-item" onclick="openLB(this.querySelector('img').src)"><img src="'+h(url)+'" alt="Foto '+(i+1)+'" loading="lazy"></div>'; }).join('');
+  var sitBadge = p.situacion==='Vacía'?'sit-v':p.situacion==='Alquilada'?'sit-a':'sit-h';
+  var fecha = new Date().toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'});
+  var n = fotos.length || 1;
+
+  var css = '*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}'
+  +':root{--dk:#1A1814;--acc:#C4973A;--bg:#F7F5F0;--sf:#fff;--br:#E8E4DC;--tx:#1A1814;--t2:#6B6560;--t3:#A8A39C}'
+  +'body{font-family:"DM Sans",sans-serif;background:var(--bg);color:var(--tx);-webkit-print-color-adjust:exact;print-color-adjust:exact}'
+  +'img{display:block;max-width:100%}'
+  +'.nav{position:fixed;top:0;left:0;right:0;height:58px;background:rgba(26,24,20,.97);display:flex;align-items:center;justify-content:space-between;padding:0 28px;z-index:200}'
+  +'.nb{font-family:"DM Serif Display",serif;font-size:15px;color:#fff;line-height:1.2}'
+  +'.nb span{font-family:"DM Sans",sans-serif;font-size:9px;color:#8A8178;letter-spacing:1.5px;text-transform:uppercase;display:block;margin-top:2px}'
+  +'.bs{padding:9px 20px;background:var(--acc);color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;font-family:inherit;letter-spacing:.3px}'
+  +'.bs:hover{opacity:.88}'
+  +'.sw{margin-top:58px;background:#0A0908}'
+  +'.sm{position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;cursor:grab;user-select:none}'
+  +'.sm:active{cursor:grabbing}'
+  +'.slide{position:absolute;inset:0;opacity:0;transition:opacity .38s ease}'
+  +'.slide.active{opacity:1;z-index:1}'
+  +'.slide img{width:100%;height:100%;object-fit:cover;pointer-events:none}'
+  +'.no-photo{width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#555;font-size:14px;background:#131210}'
+  +'.arr{position:absolute;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.9);border:none;width:44px;height:44px;border-radius:50%;font-size:22px;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:10;transition:background .15s;font-family:inherit;line-height:1}'
+  +'.arr:hover{background:#fff}'
+  +'.al{left:16px}.ar{right:16px}'
+  +'.ctr{position:absolute;bottom:14px;right:14px;background:rgba(0,0,0,.52);color:#fff;font-size:12px;padding:4px 11px;border-radius:20px;letter-spacing:.5px;z-index:5}'
+  +'.th{display:flex;gap:5px;padding:9px 14px;background:#0D0B09;overflow-x:auto;scrollbar-width:none}'
+  +'.th::-webkit-scrollbar{display:none}'
+  +'.thumb{flex:0 0 76px;height:50px;border-radius:4px;overflow:hidden;cursor:pointer;opacity:.45;transition:opacity .2s;border:2px solid transparent;flex-shrink:0}'
+  +'.thumb.active{opacity:1;border-color:var(--acc)}'
+  +'.thumb img{width:100%;height:100%;object-fit:cover;pointer-events:none}'
+  +'.wrap{max-width:900px;margin:0 auto;padding:0 28px}'
+  +'.ph{padding:30px 0 24px;border-bottom:1px solid var(--br)}'
+  +'.brio{font-size:11px;color:var(--t3);text-transform:uppercase;letter-spacing:1.2px;margin-bottom:10px}'
+  +'.pt{font-family:"DM Serif Display",serif;font-size:32px;color:var(--tx);line-height:1.2;margin-bottom:18px}'
+  +'.pr{display:flex;align-items:center;gap:16px;flex-wrap:wrap}'
+  +'.price{font-family:"DM Serif Display",serif;font-size:36px;color:var(--acc)}'
+  +'.pipe{width:1px;height:26px;background:var(--br);flex-shrink:0}'
+  +'.sc{font-size:14px;color:var(--t2)}'
+  +'.sc strong{color:var(--tx);font-weight:600}'
+  +'.ec{padding:4px 13px;background:#FBF4E6;border:1px solid #E5C872;border-radius:20px;font-size:12px;color:var(--acc);font-weight:500}'
+  +'.sit-v{padding:4px 13px;border-radius:20px;font-size:12px;font-weight:600;background:#EAF3DE;color:#3B6D11}'
+  +'.sit-a{padding:4px 13px;border-radius:20px;font-size:12px;font-weight:600;background:#FAEEDA;color:#854F0B}'
+  +'.sit-h{padding:4px 13px;border-radius:20px;font-size:12px;font-weight:600;background:#E6F1FB;color:#185FA5}'
+  +'.sec{padding:28px 0;border-bottom:1px solid var(--br)}'
+  +'.st{font-family:"DM Serif Display",serif;font-size:22px;color:var(--tx);margin-bottom:18px}'
+  +'.fg{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:10px}'
+  +'.fc{background:var(--sf);border:1px solid var(--br);border-radius:8px;padding:16px 12px;text-align:center}'
+  +'.fv{font-size:20px;font-weight:600;color:var(--tx);display:block;margin-bottom:5px}'
+  +'.fl{font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:.6px}'
+  +'.tags{display:flex;flex-wrap:wrap;gap:8px}'
+  +'.tag{padding:7px 16px;background:var(--sf);border:1px solid var(--br);border-radius:20px;font-size:13px;color:var(--t2)}'
+  +'.desc{font-size:15px;color:var(--t2);line-height:1.85;max-width:720px;white-space:pre-line}'
+  +'.hl{list-style:none;display:grid;grid-template-columns:1fr 1fr;gap:12px}'
+  +'.hl li{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--t2)}'
+  +'.dot{width:7px;height:7px;border-radius:50%;background:var(--acc);flex-shrink:0}'
+  +'.gg{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}'
+  +'.gal-item{aspect-ratio:4/3;overflow:hidden;border-radius:6px;cursor:zoom-in}'
+  +'.gal-item img{width:100%;height:100%;object-fit:cover;transition:transform .3s}'
+  +'.gal-item:hover img{transform:scale(1.04)}'
+  +'.spc{display:grid;grid-template-columns:repeat(3,1fr);gap:28px}'
+  +'.sg h4{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--t3);margin-bottom:12px}'
+  +'.sr{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--br);font-size:13px}'
+  +'.sr:last-child{border-bottom:none}'
+  +'.sk{color:var(--t3)}.sv{color:var(--tx);font-weight:500;text-align:right}'
+  +'.ftr{background:var(--dk);padding:36px 28px;margin-top:52px}'
+  +'.fi{max-width:900px;margin:0 auto;display:flex;justify-content:space-between;align-items:flex-start;gap:24px;flex-wrap:wrap}'
+  +'.fb{font-family:"DM Serif Display",serif;font-size:18px;color:#fff}'
+  +'.fb span{font-family:"DM Sans",sans-serif;font-size:9px;color:#706860;letter-spacing:1.2px;text-transform:uppercase;display:block;margin-top:5px}'
+  +'.fd{font-size:11px;color:#524E4A;line-height:1.75;max-width:500px}'
+  +'.lb{display:none;position:fixed;inset:0;background:rgba(0,0,0,.93);z-index:999;align-items:center;justify-content:center}'
+  +'.lb.open{display:flex}'
+  +'.lb img{max-width:92vw;max-height:92vh;object-fit:contain;border-radius:4px}'
+  +'.lx{position:absolute;top:18px;right:18px;background:rgba(255,255,255,.12);border:none;color:#fff;width:40px;height:40px;border-radius:50%;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center}'
+  +'@media print{'
+  +'.nav,.arr,.th,.lb{display:none!important}'
+  +'.sw{margin-top:0}'
+  +'.slide{display:none!important}'
+  +'.slide.active{display:block!important;opacity:1!important;position:relative!important}'
+  +'.sm{aspect-ratio:auto}'
+  +'.slide.active img{height:280px;width:100%;object-fit:cover}'
+  +'body{background:#fff}'
+  +'.gg{break-inside:avoid}'
+  +'.sec{break-inside:avoid}'
+  +'.ftr{break-inside:avoid;margin-top:24px}'
+  +'}';
+
+  return '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">'
+  +'<meta name="viewport" content="width=device-width,initial-scale=1">'
+  +'<title>'+h(p.direccion)+' | Jota Gestión Inmobiliaria</title>'
+  +'<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Serif+Display&display=swap" rel="stylesheet">'
+  +'<style>'+css+'</style></head><body>'
+  +'<nav class="nav"><div class="nb">Jota Gestión Inmobiliaria<span>Rosario · Argentina</span></div>'
+  +'<button class="bs" onclick="window.print()">&#11015;&nbsp;&nbsp;Guardar como PDF</button></nav>'
+  +'<div class="sw"><div class="sm" id="sm">'+slidesHtml
+  +'<span class="ctr" id="ctr">1 / '+n+'</span>'
+  +'<button class="arr al" onclick="prevSlide()">&#8249;</button>'
+  +'<button class="arr ar" onclick="nextSlide()">&#8250;</button>'
+  +'</div>'+(thumbsHtml?'<div class="th" id="th">'+thumbsHtml+'</div>':'')+'</div>'
+  +'<div class="wrap">'
+  +'<div class="ph"><div class="brio">'+h(p.barrio)+'&nbsp;&nbsp;·&nbsp;&nbsp;Rosario, Santa Fe</div>'
+  +'<h1 class="pt">'+h(p.direccion)+'</h1>'
+  +'<div class="pr"><span class="price">'+priceStr+'</span>'
+  +(p.sup_total>0?'<div class="pipe"></div><div class="sc"><strong>'+p.sup_total+'</strong>&nbsp;m² totales</div>':'')
+  +(p.dormitorios>0?'<div class="pipe"></div><div class="sc"><strong>'+p.dormitorios+'</strong>&nbsp;dormitorio'+(p.dormitorios!==1?'s':'')+'</div>':'')
+  +(expStr?'<div class="pipe"></div><span class="ec">+ exp. '+expStr+'/mes</span>':'')
+  +(p.situacion?'<span class="'+sitBadge+'">'+h(p.situacion).toUpperCase()+'</span>':'')
+  +'</div></div>'
+  +(feats.length>0?'<div class="sec"><h2 class="st">Una propiedad excepcional</h2><div class="fg">'+featsHtml+'</div></div>':'')
+  +(ams.length>0?'<div class="sec"><h2 class="st">Amenities y extras</h2><div class="tags">'+amsHtml+'</div></div>':'')
+  +(p.observaciones?'<div class="sec"><h2 class="st">Tu nuevo hogar te espera</h2><p class="desc">'+h(p.observaciones)+'</p></div>':'')
+  +(hls.length>0?'<div class="sec"><h2 class="st">Puntos destacados</h2><ul class="hl">'+hlsHtml+'</ul></div>':'')
+  +(fotos.length>1?'<div class="sec"><h2 class="st">Conocé cada rincón</h2><div class="gg">'+galHtml+'</div></div>':'')
+  +'<div class="sec"><h2 class="st">Información completa</h2><div class="spc">'
+  +'<div class="sg"><h4>Superficies</h4>'
+  +(p.sup_total>0?'<div class="sr"><span class="sk">Total construido</span><span class="sv">'+p.sup_total+' m²</span></div>':'')
+  +(p.sup_cubierta>0?'<div class="sr"><span class="sk">Cubierta</span><span class="sv">'+p.sup_cubierta+' m²</span></div>':'')
+  +(p.sup_terreno>0?'<div class="sr"><span class="sk">Terreno</span><span class="sv">'+p.sup_terreno+' m²</span></div>':'')
+  +'</div><div class="sg"><h4>Ambientes</h4>'
+  +(p.dormitorios>0?'<div class="sr"><span class="sk">Dormitorios</span><span class="sv">'+p.dormitorios+'</span></div>':'')
+  +(p.baños>0?'<div class="sr"><span class="sk">Baños</span><span class="sv">'+p.baños+'</span></div>':'')
+  +(p.ambientes>0?'<div class="sr"><span class="sk">Total ambientes</span><span class="sv">'+p.ambientes+'</span></div>':'')
+  +'</div><div class="sg"><h4>Información general</h4>'
+  +(p.condicion?'<div class="sr"><span class="sk">Condición</span><span class="sv">'+h(p.condicion)+'</span></div>':'')
+  +(p.antiguedad?'<div class="sr"><span class="sk">Antigüedad</span><span class="sv">'+h(p.antiguedad)+'</span></div>':'')
+  +(p.disposicion?'<div class="sr"><span class="sk">Disposición</span><span class="sv">'+h(p.disposicion)+'</span></div>':'')
+  +(p.expensas>0?'<div class="sr"><span class="sk">Expensas</span><span class="sv">'+expStr+'</span></div>':'')
+  +(p.tipo?'<div class="sr"><span class="sk">Tipo</span><span class="sv">'+h(p.tipo)+'</span></div>':'')
+  +'</div></div></div></div>'
+  +'<footer class="ftr"><div class="fi">'
+  +'<div class="fb">Jota Gestión Inmobiliaria<span>Rosario · Argentina</span></div>'
+  +'<p class="fd">Toda la información y medidas provistas son aproximadas y deberán ratificarse con la documentación pertinente. Los gastos refieren a la última información recabada y deberán confirmarse. Fotografías ilustrativas. Ficha generada el '+fecha+'.</p>'
+  +'</div></footer>'
+  +'<div class="lb" id="lb" onclick="closeLB()"><button class="lx" onclick="closeLB()">&#10005;</button><img id="li" src="" alt=""></div>'
+  +'<script>'
+  +'var cur=0,slides=document.querySelectorAll(".slide"),thumbs=document.querySelectorAll(".thumb"),ctr=document.getElementById("ctr");'
+  +'function goTo(n){slides[cur].classList.remove("active");if(thumbs[cur])thumbs[cur].classList.remove("active");cur=((n%slides.length)+slides.length)%slides.length;slides[cur].classList.add("active");if(thumbs[cur]){thumbs[cur].classList.add("active");thumbs[cur].scrollIntoView({behavior:"smooth",block:"nearest",inline:"center"});}if(ctr)ctr.textContent=(cur+1)+" / "+slides.length;}'
+  +'function prevSlide(){goTo(cur-1);}function nextSlide(){goTo(cur+1);}'
+  +'document.addEventListener("keydown",function(e){if(e.key==="ArrowLeft")prevSlide();if(e.key==="ArrowRight")nextSlide();if(e.key==="Escape")closeLB();});'
+  +'var sm=document.getElementById("sm"),tx=0;'
+  +'if(sm){sm.addEventListener("touchstart",function(e){tx=e.changedTouches[0].clientX;},{passive:true});'
+  +'sm.addEventListener("touchend",function(e){var d=tx-e.changedTouches[0].clientX;if(Math.abs(d)>40){if(d>0)nextSlide();else prevSlide();}},{passive:true});}'
+  +'function openLB(src){document.getElementById("li").src=src;document.getElementById("lb").classList.add("open");document.body.style.overflow="hidden";}'
+  +'function closeLB(){document.getElementById("lb").classList.remove("open");document.body.style.overflow="";}'
+  +'<\/script></body></html>';
+}
+
+
+
+// =============================================
+
 async function fetchICL(){
   try {
-    // BCRA API - Variable 14 = ICL (Índice para Contratos de Locación)
     const res = await fetch("https://api.bcra.gob.ar/estadisticas/v3.0/monetarias/14/datos?limit=2", {
       headers: {"Accept": "application/json"}
     });
@@ -314,7 +549,6 @@ async function fetchICL(){
     const data = await res.json();
     const registros = data.results || data.data || [];
     if(registros.length < 2) throw new Error("Datos insuficientes");
-    // El ICL acumulado: valor actual / valor anterior
     const ultimo = registros[0].valor || registros[0].v;
     const anterior = registros[1].valor || registros[1].v;
     return { icl: (ultimo / anterior), fecha: registros[0].fecha || registros[0].d, raw: { ultimo, anterior } };
@@ -331,7 +565,6 @@ function getAjustesHoy(){
     if(!p.alquilado || !p.ajuste || !p.ini_contrato) return false;
     const ajuste = p.ajuste.toLowerCase();
     if(!ajuste.includes("icl") && !ajuste.includes("cuatrimestral") && !ajuste.includes("trimestral") && !ajuste.includes("semestral")) return false;
-    // Verificar si hoy corresponde ajuste basado en mes de inicio
     const [dIni, mIni] = p.ini_contrato.split("/");
     const diaAjuste = dIni;
     if(dd !== diaAjuste) return false;
@@ -351,9 +584,7 @@ async function checkAjustesAutomaticos(){
 
   const iclData = await fetchICL();
   const iclValor = iclData?.icl;
-  const iclFecha = iclData?.fecha || "último disponible";
 
-  // Mostrar modal de confirmación
   const modal = document.createElement("div");
   modal.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:999";
   
@@ -501,15 +732,11 @@ function filtered(){
            : currentView === "vendidas"   ? props.filter(p => p.vendida)
            : props.filter(p => !p.vendida);
 
-  // Role filtering
   if(currentUser && currentUser.rol === "ventas"){
-    // Socio ventas: solo propiedades en venta (todas), y en alquiladas solo las que están en venta
     if(currentView === "alquiladas"){
       list = list.filter(p => p.precio > 0);
     }
-    // En propiedades, ven todo (ya tienen acceso completo a ventas)
   } else if(currentUser && currentUser.rol === "alquileres"){
-    // Socio alquileres: solo alquiladas
     list = props.filter(p => p.alquilado);
   }
 
@@ -838,6 +1065,7 @@ function openDetail(id){
     </div>
     <div class="detail-actions">
       <button class="btn-primary" onclick="openForm(${p.id})">Editar propiedad</button>
+      <button class="btn-pdf" id="btn-ficha-${p.id}" onclick="fichaPropiedad(${p.id})">📄 Ver ficha</button>
       <button class="btn-secondary" onclick="toggleHistorial(${p.id})">📈 Historial</button>
       <button class="btn-secondary" onclick="closePanel()">Cerrar</button>
       ${!p.vendida ? `<button class="btn-danger" onclick="marcarVendidaModal(${p.id})">🏆 Vender</button>` : `<span style="font-size:12px;color:var(--accent);font-weight:600;padding:9px">✓ Vendida</span>`}
@@ -856,7 +1084,6 @@ function openDetail(id){
           <option value="Planos">Planos</option>
           <option value="Reglamento PH">Reglamento PH</option>
           <option value="Liquidación de expensas">Liquidación de expensas</option>
-          <option value="Liquidación de expensas">Liquidación de expensas</option>
         </select>
         <div id="expensas-input-${p.id}" style="display:none;margin-top:8px;margin-bottom:8px">
           <label style="font-size:11px;color:var(--text-3);display:block;margin-bottom:4px">Importe total expensas (ARS)</label>
@@ -873,7 +1100,6 @@ function openDetail(id){
     <div id="historial-section" style="border-top:1px solid var(--border)"></div>`;
   document.getElementById("panel").classList.add("open");
   document.getElementById("overlay").classList.add("open");
-  // Cargar fotos y documentos
   cargarFotos(id);
   cargarDocumentos(id);
 }
@@ -929,7 +1155,6 @@ async function subirDocumento(event, propId){
   if(upErr){ if(status) status.textContent = "Error al subir"; return; }
   const { data: urlData } = db.storage.from("propiedades-docs").getPublicUrl(path);
 
-  // Si es liquidación de expensas, procesarla con IA
   let notas = "";
   if(tipo === "Liquidación de expensas" && file.type === "application/pdf"){
     if(status) status.textContent = "Procesando con IA...";
@@ -1170,7 +1395,6 @@ async function saveProp(){
     mail_propietario: g("f-mailprop")||""
   };
   if(panelId){
-    // Buscar propiedad original para comparar precios
     const original = props.find(x => x.id === panelId);
     const historial = [];
     if(original){
@@ -1183,7 +1407,6 @@ async function saveProp(){
     }
     const { error } = await db.from("propiedades").update(p).eq("id", panelId);
     if(error){ showToast("Error: " + error.message); return; }
-    // Guardar historial si hubo cambios
     if(historial.length > 0){
       await db.from("historial_precios").insert(historial);
     }
@@ -1238,7 +1461,6 @@ function calcularAjuste(propId, alqActual){
   const diff = document.getElementById(`calc-diff-${propId}`);
   const btn = document.getElementById(`calc-btn-${propId}`);
 
-  // Actualizar label según tipo
   if(inputWrap){
     const label = inputWrap.querySelector("label");
     const input = inputWrap.querySelector("input");
@@ -1283,7 +1505,6 @@ async function aplicarAjuste(propId){
   const { error } = await db.from("propiedades").update({alq_mensual: nuevoValor}).eq("id", propId);
   if(error){ showToast("Error: " + error.message); return; }
 
-  // Guardar en historial
   await db.from("historial_precios").insert({
     propiedad_id: propId,
     tipo_precio: "alquiler",
@@ -1385,7 +1606,6 @@ function renderGestion(){
   const cobradoTotal = cobradoClientes + cobradoFideicomiso;
   const totalCobrado = gPagos.reduce((s,p) => s + (p.monto_cobrado||0), 0);
 
-  // Agrupar por propietario
   const byProp = {};
   gAlq.forEach(a => {
     const k = a.propietario || 'Sin propietario';
@@ -1393,7 +1613,6 @@ function renderGestion(){
     byProp[k].push(a);
   });
 
-  // Calcular mes de aumento
   const [mesNum] = gMesActual.split('-');
   const nombresMes = ['','ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
   const mesNombre = nombresMes[parseInt(mesNum)];
@@ -1403,7 +1622,6 @@ function renderGestion(){
     const itemRows = items.map(a => {
       const pago = pagosMap[a.id];
       const estado = pago ? pago.estado : 'pendiente';
-      const tieneContrato = a.tipo_contrato && a.tipo_contrato !== 'SIN CONTRATO';
       const tieneImporte = a.alq_actual && a.alq_actual > 0;
       const estadoBadge = !tieneImporte
         ? `<span style="font-size:11px;color:var(--text-3)">Sin importe</span>`
@@ -1520,7 +1738,7 @@ function filtrarCobroRapido(q){
     const estadoColor = pago?.estado === 'pagado' ? '#3B6D11' : pago?.estado === 'parcial' ? '#92400E' : '#A32D2D';
     const estadoTxt = pago?.estado === 'pagado' ? '✓ Pagado' : pago?.estado === 'parcial' ? 'Parcial' : 'Pendiente';
     return `<div onclick="seleccionarCobroRapido(${a.id})"
-      style="padding:14px;margin-bottom:8px;background:var(--bg);border-radius:var(--radius-sm);cursor:pointer;border:1px solid var(--border);active:opacity:.8">
+      style="padding:14px;margin-bottom:8px;background:var(--bg);border-radius:var(--radius-sm);cursor:pointer;border:1px solid var(--border)">
       <div style="font-weight:600;font-size:15px;margin-bottom:3px">${a.inquilino || '—'}</div>
       <div style="font-size:12px;color:var(--text-2);margin-bottom:6px">${a.unidad}</div>
       <div style="display:flex;justify-content:space-between;align-items:center">
@@ -1687,16 +1905,11 @@ function logout(){
 
 function applyRole(user){
   currentUser = user;
-  // Show user info in sidebar
   const ui = document.getElementById("user-info");
   if(ui){ ui.style.display="block"; }
   document.getElementById("user-name").textContent = user.nombre;
   document.getElementById("user-rol").textContent = user.rol === "admin" ? "Administrador" : user.rol === "ventas" ? "Socio Ventas" : "Socio Alquileres";
 
-  // Control nav visibility based on role
-  // ventas: propiedades + alquiladas (solo las que están en venta) + alertas
-  // alquileres: solo alquiladas + alertas
-  // admin: todo
   if(user.rol === "alquileres"){
     const navProp = document.getElementById("nav-propiedades");
     if(navProp) navProp.style.display = "none";
