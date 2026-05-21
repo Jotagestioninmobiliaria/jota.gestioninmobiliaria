@@ -390,7 +390,7 @@ function generarFichaHTML(p, fotos) {
   var featsHtml = feats.map(function(f){ return '<div class="feat-card"><span class="feat-val">'+f.v+'</span><span class="feat-lbl">'+h(f.l)+'</span></div>'; }).join('');
   var amsHtml = ams.map(function(a){ return '<span class="tag">'+a.i+'&nbsp;&nbsp;'+h(a.l)+'</span>'; }).join('');
   var hlsHtml = hls.map(function(x){ return '<li><span class="dot"></span>'+h(x)+'</li>'; }).join('');
-  var galHtml = fotos.map(function(url,i){ return '<div class="gal-item" onclick="openLB(this.querySelector('img').src)"><img src="'+h(url)+'" alt="Foto '+(i+1)+'" loading="lazy"></div>'; }).join('');
+  var galHtml = fotos.map(function(url,i){ return '<div class="gal-item" onclick="openLB(this.firstElementChild.src)"><img src="'+h(url)+'" alt="Foto '+(i+1)+'" loading="lazy"></div>'; }).join('');
   var sitBadge = p.situacion==='Vacía'?'sit-v':p.situacion==='Alquilada'?'sit-a':'sit-h';
   var fecha = new Date().toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'});
   var n = fotos.length || 1;
