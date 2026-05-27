@@ -2010,10 +2010,12 @@ Titular de la cuenta: Juliana Rubio`;
     if(n.startsWith('549') && n.length===13) return n;
     if(n.startsWith('54')) n = n.substring(2);
     if(n.startsWith('0')) n = n.substring(1);
-    if(n.startsWith('9') && n.length===11) n = n.substring(1);
+    if(n.startsWith('9') && n.length > 10) n = n.substring(1);
+    if(n.length > 10) n = n.slice(-10);
     return '549'+n;
   }
-  const tel = a.tel_inquilino ? formatWAPhone(a.tel_inquilino) : '';
+  const telInput = document.getElementById('tel-inquilino')?.value || a.tel_inquilino || '';
+  const tel = telInput ? formatWAPhone(telInput) : '';
   const waUrl = tel ? `https://wa.me/${tel}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`;
   window.open(waUrl,'_blank');
 }
