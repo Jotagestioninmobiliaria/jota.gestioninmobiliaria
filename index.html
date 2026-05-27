@@ -1637,7 +1637,8 @@ function renderGestion(){
         <td style="font-size:11px;color:var(--text-2)">${a.tipo_contrato||'—'}</td>
         <td>${montoFmt}</td>
         <td>${estadoBadge}</td>
-        <td onclick="event.stopPropagation()">
+        <td onclick="event.stopPropagation()" style="white-space:nowrap">
+          ${tieneImporte ? `<button class="btn-sm" onclick="abrirDetalleWhatsApp(${a.id})" title="Enviar detalle mensual">📤 Detalle</button>` : ''}
           ${tieneImporte ? `<button class="btn-sm" onclick="abrirPago(${a.id})">💰 Cobro</button>` : ''}
         </td>
       </tr>`;
@@ -1752,6 +1753,260 @@ function filtrarCobroRapido(q){
 function seleccionarCobroRapido(id){
   document.getElementById('cobro-rapido-modal')?.remove();
   abrirPago(id);
+}
+
+// =============================================
+// DETALLE MENSUAL - WHATSAPP
+// =============================================
+let _detalleAlq = null, _detalleProp = null;
+
+function buildDedRow(label, val, isMao){
+  return `<div class="ded-row" style="display:grid;grid-template-columns:20px 1fr 110px 60px;gap:8px;align-items:center;margin-bottom:8px">
+    <input type="checkbox" onchange="calcDetalle()" style="width:14px;height:14px;cursor:pointer">
+    <span style="font-size:13px;color:var(--text-2)">${label}</span>
+    <input type="number" placeholder="0" oninput="calcDetalle()" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit;background:var(--surface);width:100%" value="${val||''}">
+    <label style="display:flex;align-items:center;justify-content:center;gap:3px;font-size:11px;color:var(--accent);cursor:pointer">
+      <input type="checkbox" class="chk-mao" ${isMao?'checked':''} onchange="calcDetalle()" style="width:12px;height:12px"> Mao
+    </label>
+  </div>`;
+}
+
+async function abrirDetalleWhatsApp(alqId){
+  const a = gAlq.find(x => x.id === alqId);
+  if(!a) return;
+  _detalleAlq = a;
+  _detalleProp = null;
+  if(a.propietario_id){
+    const { data } = await db.from('propietarios').select('*').eq('id', a.propietario_id).single();
+    _detalleProp = data;
+  }
+  const mesNombre = fmtMes(gMesActual);
+  const alqActual = a.alq_actual || 0;
+  const alqAnterior = a.alq_anterior || 0;
+  const honorarios = a.comision_adm || Math.round(alqActual * (a.comision_pct || 0));
+  const [mesNum] = gMesActual.split('-');
+  const nombresMes = ['','ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
+  const hayAumento = !!(a.mes_aumento && a.mes_aumento.toUpperCase().includes(nombresMes[parseInt(mesNum)]));
+  let diasAnt = 0, diasNue = 31;
+  if(a.inicio_contrato){
+    const diaInicio = parseInt(a.inicio_contrato.split('/')[0]);
+    const diasEnMes = new Date(parseInt(gMesActual.split('-')[1]), parseInt(mesNum), 0).getDate();
+    diasAnt = diaInicio - 1;
+    diasNue = diasEnMes - diasAnt;
+  }
+  document.getElementById('detalle-modal')?.remove();
+  const modal = document.createElement('div');
+  modal.id = 'detalle-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:flex-start;justify-content:center;z-index:9999;padding:20px;overflow-y:auto';
+  modal.innerHTML = `
+    <div style="background:var(--surface);border-radius:var(--radius);width:100%;max-width:500px;margin-top:20px;box-shadow:0 8px 32px rgba(0,0,0,.2)">
+      <div style="padding:18px 22px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div style="font-family:'DM Serif Display',serif;font-size:17px">Detalle mensual</div>
+          <div style="font-size:12px;color:var(--text-3);margin-top:2px">${a.inquilino||'—'} · ${a.unidad||''} · ${mesNombre}</div>
+        </div>
+        <button onclick="document.getElementById('detalle-modal').remove()" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--text-3)">✕</button>
+      </div>
+      <div style="padding:18px 22px">
+        <div style="font-size:11px;font-weight:500;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Alquiler</div>
+        <div id="alq-fila-normal" style="background:var(--bg);border-radius:8px;padding:10px 14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:12px">
+          <span style="font-size:13px;color:var(--text-2);white-space:nowrap" id="alq-label">Alquiler ${mesNombre}</span>
+          <input type="number" id="alq-editable" value="${alqActual}" oninput="calcDetalle()" style="width:140px;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-weight:600;font-family:inherit;background:var(--surface);text-align:right">
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-2);cursor:pointer;margin-bottom:8px">
+          <input type="checkbox" id="chk-partido" ${hayAumento?'checked':''} onchange="onTogglePartido()" style="width:14px;height:14px">
+          Mes con aumento (mes partido)
+        </label>
+        <div id="bloque-partido" style="display:${hayAumento?'block':'none'};background:#EEF6FF;border-radius:8px;padding:12px 14px;margin-bottom:10px">
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px">
+            <div>
+              <label style="font-size:10px;color:var(--text-3);display:block;margin-bottom:3px">Días anteriores</label>
+              <input type="number" id="dp-dias-ant" value="${diasAnt}" min="0" max="31" oninput="calcDetalle()" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit;background:var(--surface)">
+            </div>
+            <div>
+              <label style="font-size:10px;color:var(--text-3);display:block;margin-bottom:3px">Monto anterior ($)</label>
+              <input type="number" id="dp-monto-ant" value="${alqAnterior||''}" placeholder="Ej: 750000" oninput="calcDetalle()" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit;background:var(--surface)">
+            </div>
+            <div>
+              <label style="font-size:10px;color:var(--text-3);display:block;margin-bottom:3px">Días nuevos</label>
+              <input type="number" id="dp-dias-nue" value="${diasNue}" min="0" max="31" oninput="calcDetalle()" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit;background:var(--surface)">
+            </div>
+          </div>
+          <div style="font-size:12px;color:#185FA5;min-height:16px" id="dp-resumen"></div>
+        </div>
+        <div style="font-size:11px;font-weight:500;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;margin:12px 0 4px">Deducciones</div>
+        <div style="font-size:10px;color:var(--text-3);display:grid;grid-template-columns:20px 1fr 110px 60px;gap:8px;margin-bottom:6px;padding:0 2px">
+          <span></span><span>Concepto</span><span style="text-align:right">Monto</span><span style="text-align:center">→ Mao</span>
+        </div>
+        <div class="ded-row" style="display:grid;grid-template-columns:20px 1fr 110px 60px;gap:8px;align-items:center;margin-bottom:8px">
+          <input type="checkbox" id="chk-honor" checked onchange="calcDetalle()" style="width:14px;height:14px;cursor:pointer">
+          <span style="font-size:13px;color:var(--text-2)">Honorarios inmobiliarios</span>
+          <input type="number" id="honorarios-val" value="${honorarios}" oninput="calcDetalle()" style="width:110px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-weight:600;font-family:inherit;background:var(--surface);text-align:right">
+          <label style="display:flex;align-items:center;justify-content:center;gap:3px;font-size:11px;color:var(--accent);cursor:pointer">
+            <input type="checkbox" class="chk-mao" id="honor-mao" checked onchange="calcDetalle()" style="width:12px;height:12px"> Mao
+          </label>
+        </div>
+        <div id="ded-extra-rows">
+          ${buildDedRow('Expensas ext.',''  ,false)}
+          ${buildDedRow('API'          ,''  ,false)}
+          ${buildDedRow('TGI'          ,''  ,false)}
+        </div>
+        <button onclick="agregarDedExtra()" style="font-size:12px;color:var(--blue);background:none;border:none;cursor:pointer;padding:4px 0;margin-bottom:14px;font-family:inherit">+ Agregar deducción</button>
+        <div style="border-top:1px solid var(--border);padding-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div style="background:#EAF3DE;border-radius:8px;padding:11px 14px">
+            <div style="font-size:10px;color:#3B6D11;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px">Total a la dueña</div>
+            <div style="font-size:17px;font-weight:600;color:#3B6D11" id="total-duena-val">—</div>
+          </div>
+          <div style="background:#E6F1FB;border-radius:8px;padding:11px 14px">
+            <div style="font-size:10px;color:#185FA5;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px">Total a Mao</div>
+            <div style="font-size:17px;font-weight:600;color:#185FA5" id="total-mao-val">—</div>
+          </div>
+        </div>
+      </div>
+      <div style="padding:14px 22px;border-top:1px solid var(--border)">
+        <button onclick="generarMensajeWA()" style="width:100%;padding:11px;background:#25D366;color:white;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">
+          📲 Generar mensaje WhatsApp
+        </button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  calcDetalle();
+}
+
+function onTogglePartido(){
+  const checked = document.getElementById('chk-partido')?.checked;
+  document.getElementById('bloque-partido').style.display = checked ? 'block' : 'none';
+  const label = document.getElementById('alq-label');
+  if(label) label.textContent = checked ? 'Nuevo alquiler (monto actualizado)' : label.textContent.replace('Nuevo alquiler (monto actualizado)', label.dataset.orig || label.textContent);
+  if(label && !label.dataset.orig) label.dataset.orig = label.textContent;
+  if(checked && label) label.textContent = 'Nuevo alquiler (monto actualizado)';
+  calcDetalle();
+}
+
+function calcDetalle(){
+  const a = _detalleAlq;
+  if(!a) return;
+  const alqEditable = parseFloat(document.getElementById('alq-editable')?.value) || a.alq_actual || 0;
+  const esPartido = document.getElementById('chk-partido')?.checked;
+  let alqTotal = alqEditable;
+  if(esPartido){
+    const diasAnt = parseInt(document.getElementById('dp-dias-ant')?.value)||0;
+    const montoAnt = parseFloat(document.getElementById('dp-monto-ant')?.value)||0;
+    const diasNue = parseInt(document.getElementById('dp-dias-nue')?.value)||0;
+    const totalDias = diasAnt + diasNue;
+    if(totalDias > 0 && montoAnt > 0){
+      alqTotal = ((montoAnt/totalDias)*diasAnt) + ((alqEditable/totalDias)*diasNue);
+      const res = document.getElementById('dp-resumen');
+      if(res) res.textContent = `${diasAnt} días × $${Math.round(montoAnt/totalDias).toLocaleString('es-AR')} + ${diasNue} días × $${Math.round(alqEditable/totalDias).toLocaleString('es-AR')} = $${Math.round(alqTotal).toLocaleString('es-AR')}`;
+    }
+  }
+  const honorarios = parseFloat(document.getElementById('honorarios-val')?.value) || 0;
+  let totalDed = 0, totalMao = 0;
+  const chkHonor = document.getElementById('chk-honor');
+  if(chkHonor?.checked){
+    totalDed += honorarios;
+    if(document.getElementById('honor-mao')?.checked) totalMao += honorarios;
+  }
+  document.querySelectorAll('#ded-extra-rows .ded-row').forEach(row => {
+    const chk = row.querySelector('input[type=checkbox]:not(.chk-mao)');
+    if(!chk?.checked) return;
+    const inp = row.querySelector('input[type=number]');
+    const val = parseFloat(inp?.value)||0;
+    totalDed += val;
+    if(row.querySelector('.chk-mao')?.checked) totalMao += val;
+  });
+  const duenaEl = document.getElementById('total-duena-val');
+  const maoEl = document.getElementById('total-mao-val');
+  if(duenaEl) duenaEl.textContent = '$'+Math.round(alqTotal-totalDed).toLocaleString('es-AR');
+  if(maoEl) maoEl.textContent = '$'+Math.round(totalMao).toLocaleString('es-AR');
+}
+
+function agregarDedExtra(){
+  const wrap = document.getElementById('ded-extra-rows');
+  if(!wrap) return;
+  const div = document.createElement('div');
+  div.className = 'ded-row';
+  div.style.cssText = 'display:grid;grid-template-columns:20px 1fr 110px 60px;gap:8px;align-items:center;margin-bottom:8px';
+  div.innerHTML = `
+    <input type="checkbox" checked onchange="calcDetalle()" style="width:14px;height:14px;cursor:pointer">
+    <input type="text" placeholder="Descripción" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit;background:var(--surface)">
+    <input type="number" placeholder="0" oninput="calcDetalle()" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:inherit;background:var(--surface);width:100%">
+    <label style="display:flex;align-items:center;justify-content:center;gap:3px;font-size:11px;color:var(--accent);cursor:pointer">
+      <input type="checkbox" class="chk-mao" onchange="calcDetalle()" style="width:12px;height:12px"> Mao
+    </label>`;
+  wrap.appendChild(div);
+}
+
+function generarMensajeWA(){
+  const a = _detalleAlq;
+  const prop = _detalleProp;
+  if(!a) return;
+  const nombre = (a.inquilino||'').split(' ')[0];
+  const mesNombre = fmtMes(gMesActual);
+  const alqEditable = parseFloat(document.getElementById('alq-editable')?.value) || a.alq_actual || 0;
+  const esPartido = document.getElementById('chk-partido')?.checked;
+  let alqTotal = alqEditable;
+  let alqLinea = '';
+  if(esPartido){
+    const diasAnt = parseInt(document.getElementById('dp-dias-ant')?.value)||0;
+    const montoAnt = parseFloat(document.getElementById('dp-monto-ant')?.value)||0;
+    const diasNue = parseInt(document.getElementById('dp-dias-nue')?.value)||0;
+    const totalDias = diasAnt+diasNue;
+    if(totalDias>0 && montoAnt>0){
+      const pAnt = (montoAnt/totalDias)*diasAnt;
+      const pNue = (alqEditable/totalDias)*diasNue;
+      alqTotal = pAnt+pNue;
+      alqLinea = `Alquiler ${mesNombre}:\n  ${diasAnt} días x $${Math.round(montoAnt/totalDias).toLocaleString('es-AR')} = $${Math.round(pAnt).toLocaleString('es-AR')}\n  ${diasNue} días x $${Math.round(alqEditable/totalDias).toLocaleString('es-AR')} = $${Math.round(pNue).toLocaleString('es-AR')}\n  Total: $${Math.round(alqTotal).toLocaleString('es-AR')}.-`;
+    }
+  }
+  if(!alqLinea) alqLinea = `Alquiler ${mesNombre} $${Math.round(alqTotal).toLocaleString('es-AR')}.-`;
+  const honorarios = parseFloat(document.getElementById('honorarios-val')?.value) || 0;
+  let dedLineas = '';
+  let totalDed = 0, totalMao = 0;
+  const chkHonor = document.getElementById('chk-honor');
+  if(chkHonor?.checked && honorarios>0){
+    dedLineas += `Se descuentan honorarios inmobiliarios $${honorarios.toLocaleString('es-AR')}.- (descontados al propietario/a)\n`;
+    totalDed += honorarios;
+    if(document.getElementById('honor-mao')?.checked) totalMao += honorarios;
+  }
+  document.querySelectorAll('#ded-extra-rows .ded-row').forEach(row => {
+    const chk = row.querySelector('input[type=checkbox]:not(.chk-mao)');
+    if(!chk?.checked) return;
+    const inp = row.querySelector('input[type=number]');
+    const val = parseFloat(inp?.value)||0;
+    if(val<=0) return;
+    const labelEl = row.querySelector('span');
+    const labelInp = row.querySelector('input[type=text]');
+    const label = labelEl ? labelEl.textContent : (labelInp?.value||'Deducción');
+    dedLineas += `Se descuenta${label.toLowerCase().includes('expensas')?'n':''} ${label} $${val.toLocaleString('es-AR')}.-\n`;
+    totalDed += val;
+    if(row.querySelector('.chk-mao')?.checked) totalMao += val;
+  });
+  const totalDuena = Math.round(alqTotal-totalDed);
+  let bankLines = '';
+  if(prop){
+    bankLines = `${prop.titular||prop.nombre}\n`;
+    if(prop.banco) bankLines += `${prop.banco}\n`;
+    if(prop.nro_cuenta) bankLines += `N° de cuenta ${prop.nro_cuenta}\n`;
+    if(prop.cbu) bankLines += `CBU ${prop.cbu}\n`;
+    if(prop.alias_mao && !prop.cbu) bankLines += `Alias: ${prop.alias_mao}\n`;
+  }
+  const maoDesc = totalMao > honorarios ? '(honorarios+otros)' : '(honorarios inmobiliarios)';
+  const msg =
+`Hola ${nombre} buen día! cómo estás?
+Te paso detalle del mes.
+
+${alqLinea}
+${dedLineas}
+TOTAL a depositar a la dueña $${totalDuena.toLocaleString('es-AR')}.-
+${bankLines}
+TOTAL a depositar a Mao propiedades $${Math.round(totalMao).toLocaleString('es-AR')}.- ${maoDesc}
+Número de CVU: 0000003100003402497322
+Alias de CVU: PROPIEDADESMAO
+Titular de la cuenta: Juliana Rubio`;
+  const tel = a.tel_inquilino ? `549${(a.tel_inquilino||'').replace(/\D/g,'')}` : '';
+  const waUrl = tel ? `https://wa.me/${tel}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+  window.open(waUrl,'_blank');
 }
 
 function filtrarGestion(q){
