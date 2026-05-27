@@ -2004,7 +2004,16 @@ TOTAL a depositar a Mao propiedades $${Math.round(totalMao).toLocaleString('es-A
 Número de CVU: 0000003100003402497322
 Alias de CVU: PROPIEDADESMAO
 Titular de la cuenta: Juliana Rubio`;
-  const tel = a.tel_inquilino ? `549${(a.tel_inquilino||'').replace(/\D/g,'')}` : '';
+  function formatWAPhone(t){
+    if(!t) return '';
+    let n = t.replace(/\D/g,'');
+    if(n.startsWith('549') && n.length===13) return n;
+    if(n.startsWith('54')) n = n.substring(2);
+    if(n.startsWith('0')) n = n.substring(1);
+    if(n.startsWith('9') && n.length===11) n = n.substring(1);
+    return '549'+n;
+  }
+  const tel = a.tel_inquilino ? formatWAPhone(a.tel_inquilino) : '';
   const waUrl = tel ? `https://wa.me/${tel}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`;
   window.open(waUrl,'_blank');
 }
