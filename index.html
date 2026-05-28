@@ -1637,9 +1637,9 @@ function renderGestion(){
         <td style="font-size:11px;color:var(--text-2)">${a.tipo_contrato||'—'}</td>
         <td>${montoFmt}</td>
         <td>${estadoBadge}</td>
-        <td onclick="event.stopPropagation()" style="white-space:nowrap">
-          ${tieneImporte ? `<button class="btn-sm" onclick="abrirDetalleWhatsApp(${a.id})" title="Enviar detalle mensual">📤 Detalle</button>` : ''}
-          ${tieneImporte ? `<button class="btn-sm" onclick="abrirPago(${a.id})">💰 Cobro</button>` : ''}
+        <td onclick="event.stopPropagation()" style="white-space:nowrap;display:flex;flex-direction:column;gap:4px;border:none">
+          ${tieneImporte ? `<button class="btn-sm" onclick="abrirDetalleWhatsApp(${a.id})">📤 Detalle</button>` : ''}
+          <button class="btn-sm" onclick="abrirPago(${a.id})">💰 Cobro</button>
         </td>
       </tr>`;
     }).join('');
