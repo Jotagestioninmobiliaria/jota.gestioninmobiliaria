@@ -1756,6 +1756,87 @@ function seleccionarCobroRapido(id){
 }
 
 // =============================================
+// ACTUALIZAR ALQUILER
+// =============================================
+function actualizarAlquiler(alqId){
+  const a = gAlq.find(x => x.id === alqId);
+  if(!a) return;
+  document.getElementById('actualizar-alq-modal')?.remove();
+  const modal = document.createElement('div');
+  modal.id = 'actualizar-alq-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px';
+  modal.innerHTML = `
+    <div style="background:var(--surface);border-radius:var(--radius);width:100%;max-width:380px;box-shadow:0 8px 32px rgba(0,0,0,.2)">
+      <div style="padding:18px 22px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div style="font-family:'DM Serif Display',serif;font-size:17px">Actualizar alquiler</div>
+          <div style="font-size:12px;color:var(--text-3);margin-top:2px">${a.unidad||''} · ${a.inquilino||''}</div>
+        </div>
+        <button onclick="document.getElementById('actualizar-alq-modal').remove()" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--text-3)">✕</button>
+      </div>
+      <div style="padding:20px 22px">
+        <div style="background:var(--bg);border-radius:8px;padding:12px 14px;margin-bottom:16px;display:flex;justify-content:space-between">
+          <span style="font-size:13px;color:var(--text-3)">Monto actual</span>
+          <span style="font-size:13px;font-weight:600">$${Number(a.alq_actual||0).toLocaleString('es-AR')}</span>
+        </div>
+        <label style="font-size:12px;color:var(--text-3);display:block;margin-bottom:6px">Nuevo monto</label>
+        <input type="number" id="nuevo-alq-val" placeholder="Ej: 889780" inputmode="numeric"
+          style="width:100%;padding:12px;border:1px solid var(--border);border-radius:8px;font-size:18px;font-weight:600;font-family:inherit;background:var(--surface);margin-bottom:12px">
+        <div id="nueva-comision-preview" style="font-size:12px;color:var(--text-3);min-height:18px;margin-bottom:16px"></div>
+        <button onclick="guardarNuevoAlquiler(${a.id})"
+          style="width:100%;padding:12px;background:var(--text);color:white;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">
+          Guardar
+        </button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  // Show commission preview as user types
+  document.getElementById('nuevo-alq-val').addEventListener('input', function(){
+    const val = parseFloat(this.value)||0;
+    const pct = a.comision_pct||0;
+    const preview = document.getElementById('nueva-comision-preview');
+    if(val > 0 && pct > 0){
+      const nuevaComision = Math.round(val * pct);
+      preview.textContent = `Comisión calculada: $${nuevaComision.toLocaleString('es-AR')} (${(pct*100).toFixed(2)}%)`;
+    } else {
+      preview.textContent = '';
+    }
+  });
+}
+
+async function guardarNuevoAlquiler(alqId){
+  const a = gAlq.find(x => x.id === alqId);
+  if(!a) return;
+  const nuevoMonto = parseFloat(document.getElementById('nuevo-alq-val')?.value);
+  if(!nuevoMonto || nuevoMonto <= 0){
+    alert('Ingresá un monto válido');
+    return;
+  }
+  const alqAnterior = a.alq_actual || 0;
+  const nuevaComision = a.comision_pct ? Math.round(nuevoMonto * a.comision_pct) : a.comision_adm;
+  const updateData = {
+    alq_anterior: alqAnterior,
+    alq_actual: nuevoMonto,
+    ...(a.comision_pct ? { comision_adm: nuevaComision } : {})
+  };
+  const { error } = await db.from('alquileres').update(updateData).eq('id', alqId);
+  if(error){
+    alert('Error al guardar: ' + error.message);
+    return;
+  }
+  // Update local data
+  const idx = gAlq.findIndex(x => x.id === alqId);
+  if(idx >= 0){
+    gAlq[idx].alq_anterior = alqAnterior;
+    gAlq[idx].alq_actual = nuevoMonto;
+    if(a.comision_pct) gAlq[idx].comision_adm = nuevaComision;
+  }
+  document.getElementById('actualizar-alq-modal')?.remove();
+  renderGestion();
+  alert(`✅ Alquiler actualizado\nAnterior: $${alqAnterior.toLocaleString('es-AR')}\nNuevo: $${nuevoMonto.toLocaleString('es-AR')}`);
+}
+
+// =============================================
 // DETALLE MENSUAL - WHATSAPP
 // =============================================
 let _detalleAlq = null, _detalleProp = null;
@@ -2152,6 +2233,7 @@ async function openGestionDetail(id){
     </div>
     <div class="detail-actions">
       ${a.alq_actual > 0 ? `<button class="btn-primary" onclick="closePanel();abrirPago(${a.id})">💰 Registrar cobro</button>` : ''}
+      <button class="btn-secondary" onclick="actualizarAlquiler(${a.id})">✏️ Actualizar alquiler</button>
       <button class="btn-secondary" onclick="closePanel()">Cerrar</button>
     </div>`;
   document.getElementById('panel').classList.add('open');
