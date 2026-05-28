@@ -228,6 +228,9 @@
       <div class="nav-item" id="nav-gestion" onclick="setView('gestion')">
         <span class="nav-icon">🏠</span> Gestión Alq.
       </div>
+      <div class="nav-item" id="nav-resumen" onclick="setView('resumen')">
+        <span class="nav-icon">📊</span> Resumen
+      </div>
       <div class="nav-item" id="nav-vendidas" onclick="setView('vendidas')">
         <span class="nav-icon">🏆</span> Vendidas
       </div>
@@ -709,6 +712,8 @@ function setView(v){
   event.target.closest(".nav-item").classList.add("active");
   if(v === "alertas"){
     document.getElementById("main").innerHTML = renderAlertas();
+  } else if(v === "resumen"){
+    loadResumen();
   } else if(v === "gestion"){
     loadGestion();
   } else if(v === "vendidas"){
@@ -2198,6 +2203,130 @@ Titular de la cuenta: Juliana Rubio`;
   window.open(waUrl,'_blank');
   document.getElementById('detalle-modal')?.remove();
   loadGestion();
+}
+
+// =============================================
+// RESUMEN MENSUAL
+// =============================================
+async function loadResumen(){
+  const main = document.getElementById('main');
+  main.innerHTML = `<div style="padding:40px;text-align:center;color:var(--text-3)">Cargando resumen...</div>`;
+
+  const [mesNum, anio] = gMesActual.split('-');
+  const mesNombres = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const mesNombre = mesNombres[parseInt(mesNum)] + ' ' + anio;
+
+  // Fetch pagos del mes
+  const { data: pagos } = await db.from('pagos_mensuales')
+    .select('*').eq('periodo', gMesActual);
+  const { data: propietarios } = await db.from('propietarios').select('*');
+  const alquileres = gAlq || [];
+
+  const pagosMap = {};
+  (pagos||[]).forEach(p => pagosMap[p.alquiler_id] = p);
+
+  // Totales globales
+  const pagados = (pagos||[]).filter(p => p.estado === 'pagado' || p.estado === 'parcial');
+  const totalCobrado = pagados.reduce((s,p) => s + (p.monto_cobrado||0), 0);
+  const totalHonorarios = pagados.reduce((s,p) => s + (p.honorarios||0), 0);
+  const totalMao = pagados.reduce((s,p) => s + (p.total_mao||0), 0);
+  const countPagados = pagados.length;
+  const countPendientes = alquileres.filter(a => a.alq_actual > 0 && !a.parent_id && (!pagosMap[a.id] || !['pagado','parcial'].includes(pagosMap[a.id].estado))).length;
+
+  // Desglose por propietario
+  const byProp = {};
+  alquileres.filter(a => a.alq_actual > 0 && !a.parent_id).forEach(a => {
+    const propNombre = a.propietario || 'Sin propietario';
+    if(!byProp[propNombre]) byProp[propNombre] = { unidades: [], pagadas: 0, totalACobrar: 0, totalCobrado: 0, honorarios: 0, propietario_id: a.propietario_id };
+    byProp[propNombre].unidades.push(a);
+    byProp[propNombre].totalACobrar += a.alq_actual || 0;
+    const pago = pagosMap[a.id];
+    if(pago && ['pagado','parcial'].includes(pago.estado)){
+      byProp[propNombre].pagadas++;
+      byProp[propNombre].totalCobrado += pago.monto_cobrado || 0;
+      byProp[propNombre].honorarios += pago.honorarios || 0;
+    }
+  });
+
+  const rows = Object.entries(byProp).sort((a,b) => a[0].localeCompare(b[0])).map(([nombre, d]) => {
+    const pct = d.unidades.length > 0 ? Math.round((d.pagadas/d.unidades.length)*100) : 0;
+    const estadoColor = pct === 100 ? 'var(--green)' : pct === 0 ? 'var(--red)' : 'var(--accent)';
+    const estadoBg = pct === 100 ? '#EAF3DE' : pct === 0 ? '#FCEBEB' : '#FEF3E2';
+    const estadoTxt = pct === 100 ? '#3B6D11' : pct === 0 ? '#A32D2D' : '#92400E';
+    return `<tr style="border-top:1px solid var(--border)">
+      <td style="padding:11px 16px;font-size:13px">${nombre}</td>
+      <td style="padding:11px 12px;text-align:center;font-size:13px">${d.unidades.length}</td>
+      <td style="padding:11px 12px;text-align:right;font-size:13px">$${Math.round(d.totalACobrar).toLocaleString('es-AR')}</td>
+      <td style="padding:11px 12px;text-align:right;font-size:13px;color:${d.totalCobrado>0?'var(--green)':'var(--text-3)'}">$${Math.round(d.totalCobrado).toLocaleString('es-AR')}</td>
+      <td style="padding:11px 12px;text-align:right;font-size:13px;color:var(--blue)">$${Math.round(d.honorarios).toLocaleString('es-AR')}</td>
+      <td style="padding:11px 16px;text-align:center">
+        <span style="background:${estadoBg};color:${estadoTxt};font-size:11px;padding:3px 8px;border-radius:4px">${d.pagadas}/${d.unidades.length}</span>
+      </td>
+    </tr>`;
+  }).join('');
+
+  main.innerHTML = `
+    <div style="padding:32px 32px 24px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px">
+        <div>
+          <h2 style="font-family:'DM Serif Display',serif;font-size:26px;font-weight:400;margin:0 0 4px">Resumen mensual</h2>
+          <div style="font-size:13px;color:var(--text-3)">${mesNombre}</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button onclick="gMesActual=prevMes(gMesActual);loadResumen()" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--text-2)">‹</button>
+          <span style="font-size:13px;font-weight:500;min-width:100px;text-align:center">${mesNombre}</span>
+          <button onclick="gMesActual=nextMes(gMesActual);loadResumen()" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--text-2)">›</button>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:28px">
+        <div style="background:var(--bg);border-radius:var(--radius);padding:14px 16px">
+          <div style="font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Total cobrado</div>
+          <div style="font-size:22px;font-weight:500;color:var(--green)">$${Math.round(totalCobrado).toLocaleString('es-AR')}</div>
+        </div>
+        <div style="background:var(--bg);border-radius:var(--radius);padding:14px 16px">
+          <div style="font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Total a Mao</div>
+          <div style="font-size:22px;font-weight:500;color:var(--blue)">$${Math.round(totalMao||totalHonorarios).toLocaleString('es-AR')}</div>
+        </div>
+        <div style="background:var(--bg);border-radius:var(--radius);padding:14px 16px">
+          <div style="font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Pagados</div>
+          <div style="font-size:22px;font-weight:500;color:var(--green)">${countPagados}</div>
+        </div>
+        <div style="background:var(--bg);border-radius:var(--radius);padding:14px 16px">
+          <div style="font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Pendientes</div>
+          <div style="font-size:22px;font-weight:500;color:var(--red)">${countPendientes}</div>
+        </div>
+      </div>
+
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
+        <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-weight:500;font-size:14px">Desglose por propietario</div>
+        <div style="overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse">
+            <thead>
+              <tr style="background:var(--bg)">
+                <th style="padding:10px 16px;text-align:left;font-size:12px;font-weight:500;color:var(--text-3)">Propietario</th>
+                <th style="padding:10px 12px;text-align:center;font-size:12px;font-weight:500;color:var(--text-3)">Unidades</th>
+                <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:500;color:var(--text-3)">A cobrar</th>
+                <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:500;color:var(--text-3)">Cobrado</th>
+                <th style="padding:10px 12px;text-align:right;font-size:12px;font-weight:500;color:var(--text-3)">Honorarios</th>
+                <th style="padding:10px 16px;text-align:center;font-size:12px;font-weight:500;color:var(--text-3)">Estado</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+            <tfoot>
+              <tr style="border-top:2px solid var(--border);background:var(--bg)">
+                <td style="padding:11px 16px;font-size:13px;font-weight:500">Total</td>
+                <td></td>
+                <td style="padding:11px 12px;text-align:right;font-size:13px;font-weight:500">$${Math.round(Object.values(byProp).reduce((s,d)=>s+d.totalACobrar,0)).toLocaleString('es-AR')}</td>
+                <td style="padding:11px 12px;text-align:right;font-size:13px;font-weight:500;color:var(--green)">$${Math.round(totalCobrado).toLocaleString('es-AR')}</td>
+                <td style="padding:11px 12px;text-align:right;font-size:13px;font-weight:500;color:var(--blue)">$${Math.round(totalHonorarios).toLocaleString('es-AR')}</td>
+                <td></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    </div>`;
 }
 
 function filtrarGestion(q){
