@@ -2271,6 +2271,20 @@ async function openGestionDetail(id){
         ${field('Tel. admin', a.tel_adm)}
       </div>
 
+      ${(()=>{
+        const [mesNum] = gMesActual.split('-');
+        const nombresMes = ['','ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
+        const mesNombreUpper = nombresMes[parseInt(mesNum)];
+        const tieneAumentoEsteMes = a.mes_aumento && a.mes_aumento.toUpperCase().includes(mesNombreUpper);
+        return tieneAumentoEsteMes ? `
+        <div style="background:#FFF3CD;border:1px solid #FFCC00;border-radius:8px;padding:12px 14px;margin-bottom:14px;display:flex;align-items:center;gap:10px">
+          <span style="font-size:20px">📈</span>
+          <div>
+            <div style="font-size:13px;font-weight:600;color:#7A5800">Mes de aumento</div>
+            <div style="font-size:12px;color:#7A5800;margin-top:2px">Este mes corresponde actualizar el alquiler por ICL. Usá el botón <strong>✏️ Actualizar alquiler</strong> para ingresar el nuevo monto.</div>
+          </div>
+        </div>` : '';
+      })()}
       <div class="section-label">📋 Contrato</div>
       <div class="detail-grid" style="margin-bottom:16px">
         ${field('Inicio', a.inicio_contrato ? new Date(a.inicio_contrato).toLocaleDateString('es-AR') : null)}
