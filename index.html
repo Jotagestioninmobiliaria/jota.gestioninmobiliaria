@@ -1945,7 +1945,12 @@ async function abrirDetalleWhatsApp(alqId){
         </div>
       </div>
       <div style="padding:14px 22px;border-top:1px solid var(--border)">
-        <button onclick="generarMensajeWA()" style="width:100%;padding:11px;background:#25D366;color:white;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">
+        <div style="margin-bottom:10px">
+          <label style="font-size:12px;color:var(--text-3);display:block;margin-bottom:6px">📎 Adjuntar comprobante de expensas (opcional)</label>
+          <input type="file" id="comprobante-file" accept="image/*,.pdf"
+            style="width:100%;font-size:12px;color:var(--text-2);background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px;cursor:pointer">
+        </div>
+        <button onclick="generarMensajeWA()" id="btn-generar-wa" style="width:100%;padding:11px;background:#25D366;color:white;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">
           📲 Generar mensaje WhatsApp
         </button>
       </div>
@@ -2095,8 +2100,79 @@ Titular de la cuenta: Juliana Rubio`;
     if(n.length > 10) n = n.slice(-10);
     return '549'+n;
   }
+  const btn = document.getElementById('btn-generar-wa');
+  if(btn){ btn.disabled=true; btn.textContent='Guardando...'; }
+
+  const otrosArr = [];
+  document.querySelectorAll('#ded-extra-rows .ded-row').forEach(row => {
+    const chk = row.querySelector('input[type=checkbox]:not(.chk-mao)');
+    if(!chk?.checked) return;
+    const inp = row.querySelector('input[type=number]');
+    const val = parseFloat(inp?.value)||0;
+    if(val<=0) return;
+    const labelEl = row.querySelector('span');
+    const labelInp = row.querySelector('input[type=text]');
+    const label = labelEl ? labelEl.textContent : (labelInp?.value||'Deducción');
+    const mao = row.querySelector('.chk-mao')?.checked||false;
+    if(!['Expensas ext.','API','TGI','Arreglo/Reparación'].includes(label)){
+      otrosArr.push({label, val, mao});
+    }
+  });
+
+  const getDed = label => {
+    let val = 0;
+    document.querySelectorAll('#ded-extra-rows .ded-row').forEach(row => {
+      const chk = row.querySelector('input[type=checkbox]:not(.chk-mao)');
+      if(!chk?.checked) return;
+      const span = row.querySelector('span');
+      if(span && span.textContent===label){
+        val = parseFloat(row.querySelector('input[type=number]')?.value)||0;
+      }
+    });
+    return val;
+  };
+
+  let comprobanteUrl = null;
+  const fileInput = document.getElementById('comprobante-file');
+  const file = fileInput?.files?.[0];
+  if(file){
+    const ext = file.name.split('.').pop();
+    const path = `${a.id}/${gMesActual}.${ext}`;
+    const { data: upData, error: upErr } = await db.storage.from('comprobantes').upload(path, file, { upsert: true });
+    if(!upErr){
+      const { data: urlData } = db.storage.from('comprobantes').getPublicUrl(path);
+      comprobanteUrl = urlData?.publicUrl || null;
+    }
+  }
+
+  const { data: existing } = await db.from('pagos_mensuales')
+    .select('id').eq('alquiler_id', a.id).eq('periodo', gMesActual).maybeSingle();
+
+  const registro = {
+    alquiler_id: a.id,
+    periodo: gMesActual,
+    estado: 'pago-pendiente',
+    honorarios: honorarios,
+    expensas: getDed('Expensas ext.'),
+    api: getDed('API'),
+    tgi: getDed('TGI'),
+    otros: otrosArr.length > 0 ? otrosArr : null,
+    total_duena: totalDuena,
+    total_mao: Math.round(totalMao),
+    fecha_envio: new Date().toISOString(),
+    ...(comprobanteUrl ? { comprobante_url: comprobanteUrl } : {})
+  };
+
+  if(existing){
+    await db.from('pagos_mensuales').update(registro).eq('id', existing.id);
+  } else {
+    await db.from('pagos_mensuales').insert(registro);
+  }
+
   const waUrl = `https://wa.me/?text=${encodeURIComponent(msg)}`;
   window.open(waUrl,'_blank');
+  document.getElementById('detalle-modal')?.remove();
+  loadGestion();
 }
 
 function filtrarGestion(q){
