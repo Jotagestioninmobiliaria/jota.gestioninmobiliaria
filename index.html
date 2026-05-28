@@ -1631,8 +1631,33 @@ function renderGestion(){
         : `<span class="badge" style="background:#F1EFE8;color:#5F5E5A">Pendiente</span>`;
       const montoFmt = pago?.monto_cobrado ? `$${Number(pago.monto_cobrado).toLocaleString('es-AR')}` : (a.alq_actual ? `$${Number(a.alq_actual).toLocaleString('es-AR')}` : '—');
       const hayAumento = a.mes_aumento && a.mes_aumento.toUpperCase().includes(mesNombre);
-      return `<tr onclick="openGestionDetail(${a.id})" style="cursor:pointer">
-        <td title="${a.unidad||''}">${a.unidad||'—'} ${hayAumento ? '<span title="Mes de aumento" style="color:var(--accent)">⬆</span>' : ''}</td>
+
+      // Alertas de vencimiento de pago
+      const hoy = new Date();
+      const diaHoy = hoy.getDate();
+      const pagoVencido = tieneImporte && diaHoy > 10 && !['pagado','parcial'].includes(estado);
+
+      // Alertas de vencimiento de contrato
+      let alertaContrato = null;
+      if(a.fin_contrato){
+        const fin = new Date(a.fin_contrato);
+        const diffDias = Math.round((fin - hoy) / (1000*60*60*24));
+        if(diffDias >= 0 && diffDias <= 30) alertaContrato = 'urgente';
+        else if(diffDias > 30 && diffDias <= 60) alertaContrato = 'proximo';
+      }
+
+      const rowBg = pagoVencido ? 'background:#FFF0F0;' 
+                  : alertaContrato === 'urgente' ? 'background:#FFF0F0;'
+                  : alertaContrato === 'proximo' ? 'background:#FFFBEB;'
+                  : '';
+
+      const alertaIcon = pagoVencido ? ' <span title="Pago vencido (después del día 10)" style="color:#C0392B">⚠</span>' 
+                       : alertaContrato === 'urgente' ? ' <span title="Contrato vence en menos de 30 días" style="color:#C0392B">🔴</span>'
+                       : alertaContrato === 'proximo' ? ' <span title="Contrato vence en menos de 60 días" style="color:#E67E22">🟡</span>'
+                       : '';
+
+      return `<tr onclick="openGestionDetail(${a.id})" style="cursor:pointer;${rowBg}">
+        <td title="${a.unidad||''}">${a.unidad||'—'} ${hayAumento ? '<span title="Mes de aumento" style="color:var(--accent)">⬆</span>' : ''}${alertaIcon}</td>
         <td>${a.inquilino||'—'}</td>
         <td style="font-size:11px;color:var(--text-2)">${a.tipo_contrato||'—'}</td>
         <td>${montoFmt}</td>
@@ -2276,14 +2301,54 @@ async function openGestionDetail(id){
         const nombresMes = ['','ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
         const mesNombreUpper = nombresMes[parseInt(mesNum)];
         const tieneAumentoEsteMes = a.mes_aumento && a.mes_aumento.toUpperCase().includes(mesNombreUpper);
-        return tieneAumentoEsteMes ? `
+        
+        // Alerta vencimiento contrato
+        let alertaContratoHtml = '';
+        if(a.fin_contrato){
+          const fin = new Date(a.fin_contrato);
+          const hoy = new Date();
+          const diffDias = Math.round((fin - hoy) / (1000*60*60*24));
+          const finFmt = fin.toLocaleDateString('es-AR');
+          if(diffDias >= 0 && diffDias <= 30){
+            alertaContratoHtml = `<div style="background:#FCEBEB;border:1px solid #E57373;border-radius:8px;padding:12px 14px;margin-bottom:14px;display:flex;align-items:center;gap:10px">
+              <span style="font-size:20px">🔴</span>
+              <div>
+                <div style="font-size:13px;font-weight:600;color:#A32D2D">Contrato vence en ${diffDias} días</div>
+                <div style="font-size:12px;color:#A32D2D;margin-top:2px">Vencimiento: ${finFmt}. Contactar al propietario e inquilino para renovar.</div>
+              </div>
+            </div>`;
+          } else if(diffDias > 30 && diffDias <= 60){
+            alertaContratoHtml = `<div style="background:#FFFBEB;border:1px solid #FFCC00;border-radius:8px;padding:12px 14px;margin-bottom:14px;display:flex;align-items:center;gap:10px">
+              <span style="font-size:20px">🟡</span>
+              <div>
+                <div style="font-size:13px;font-weight:600;color:#7A5800">Contrato vence en ${diffDias} días</div>
+                <div style="font-size:12px;color:#7A5800;margin-top:2px">Vencimiento: ${finFmt}. Pronto será necesario renovar el contrato.</div>
+              </div>
+            </div>`;
+          }
+        }
+
+        // Alerta pago vencido
+        const pagoDetalle = gPagos?.find(p => p.alquiler_id === a.id && p.periodo === gMesActual);
+        const estadoDetalle = pagoDetalle?.estado || 'pendiente';
+        const diaHoy = new Date().getDate();
+        const pagoVencidoDetalle = a.alq_actual > 0 && diaHoy > 10 && !['pagado','parcial'].includes(estadoDetalle);
+        const alertaPagoHtml = pagoVencidoDetalle ? `<div style="background:#FCEBEB;border:1px solid #E57373;border-radius:8px;padding:12px 14px;margin-bottom:14px;display:flex;align-items:center;gap:10px">
+          <span style="font-size:20px">⚠️</span>
+          <div>
+            <div style="font-size:13px;font-weight:600;color:#A32D2D">Pago vencido</div>
+            <div style="font-size:12px;color:#A32D2D;margin-top:2px">Ya pasó el día 10 y no hay pago registrado para este mes.</div>
+          </div>
+        </div>` : '';
+
+        return alertaContratoHtml + alertaPagoHtml + (tieneAumentoEsteMes ? `
         <div style="background:#FFF3CD;border:1px solid #FFCC00;border-radius:8px;padding:12px 14px;margin-bottom:14px;display:flex;align-items:center;gap:10px">
           <span style="font-size:20px">📈</span>
           <div>
             <div style="font-size:13px;font-weight:600;color:#7A5800">Mes de aumento</div>
             <div style="font-size:12px;color:#7A5800;margin-top:2px">Este mes corresponde actualizar el alquiler por ICL. Usá el botón <strong>✏️ Actualizar alquiler</strong> para ingresar el nuevo monto.</div>
           </div>
-        </div>` : '';
+        </div>` : '');
       })()}
       <div class="section-label">📋 Contrato</div>
       <div class="detail-grid" style="margin-bottom:16px">
