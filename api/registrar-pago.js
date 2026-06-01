@@ -10,7 +10,7 @@ module.exports = async function handler(req, res) {
     process.env.SUPABASE_SERVICE_KEY
   );
 
-  const { alquiler_id, periodo, monto_cobrado, fecha_pago, comprobante_url, pago_existente_id } = req.body;
+  const { alquiler_id, periodo, monto_cobrado, fecha_pago, comprobante_url, comprobante_url2, pago_existente_id } = req.body;
 
   if (!alquiler_id || !periodo || !monto_cobrado || !fecha_pago) {
     return res.status(400).json({ error: 'Faltan campos requeridos' });
@@ -23,7 +23,8 @@ module.exports = async function handler(req, res) {
       estado: 'pago-pendiente',
       monto_cobrado,
       fecha_pago,
-      comprobante_url: comprobante_url || null
+      comprobante_url: comprobante_url || null,
+      ...(comprobante_url2 ? { comprobante_url2 } : {})
     };
 
     let error;
@@ -32,18 +33,4 @@ module.exports = async function handler(req, res) {
       ({ error } = await supabase
         .from('pagos_mensuales')
         .update(registro)
-        .eq('id', pago_existente_id));
-    } else {
-      ({ error } = await supabase
-        .from('pagos_mensuales')
-        .insert(registro));
-    }
-
-    if (error) throw error;
-
-    return res.status(200).json({ ok: true });
-  } catch (e) {
-    console.error('Error registrar-pago:', e);
-    return res.status(500).json({ error: e.message || 'Error interno' });
-  }
-};
+        .eq('id', pago_ex
