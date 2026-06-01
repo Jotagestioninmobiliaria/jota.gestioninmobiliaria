@@ -1,6 +1,6 @@
-import { createClient } from '@supabase/supabase-js';
+const { createClient } = require('@supabase/supabase-js');
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Método no permitido' });
   }
@@ -46,4 +46,4 @@ export default async function handler(req, res) {
     console.error('Error registrar-pago:', e);
     return res.status(500).json({ error: e.message || 'Error interno' });
   }
-}
+};
