@@ -2273,6 +2273,9 @@ async function loadResumen(){
       <td style="padding:11px 16px;text-align:center">
         <span style="background:${estadoBg};color:${estadoTxt};font-size:11px;padding:3px 8px;border-radius:4px">${d.pagadas}/${d.unidades.length}</span>
       </td>
+      <td style="padding:11px 16px;text-align:center">
+        <button onclick="generarInformePropietario('${nombre.replace(/'/g,String.fromCharCode(39))}')" style="font-size:11px;padding:4px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-family:inherit">📄 Informe</button>
+      </td>
     </tr>`;
   }).join('');
 
