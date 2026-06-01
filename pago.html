@@ -242,21 +242,21 @@ async function submitPago(){
     const { data: urlData } = db.storage.from('comprobantes').getPublicUrl(path);
     const comprobanteUrl = urlData?.publicUrl;
 
-    // Save or update pago
-    const registro = {
-      alquiler_id: alqId,
-      periodo: getMesActual(),
-      estado: 'pago-pendiente',
-      monto_cobrado: monto,
-      fecha_pago: fecha,
-      comprobante_url: comprobanteUrl
-    };
-
-    if(pagoExistente){
-      await db.from('pagos_mensuales').update(registro).eq('id', pagoExistente.id);
-    } else {
-      await db.from('pagos_mensuales').insert(registro);
-    }
+    // Save or update pago via API route segura (service_role en el servidor)
+    const response = await fetch('/api/registrar-pago', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        alquiler_id: alqId,
+        periodo: getMesActual(),
+        monto_cobrado: monto,
+        fecha_pago: fecha,
+        comprobante_url: comprobanteUrl,
+        pago_existente_id: pagoExistente ? pagoExistente.id : null
+      })
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Error al registrar pago');
 
     document.getElementById('content').style.display = 'none';
     document.getElementById('success').style.display = 'block';
