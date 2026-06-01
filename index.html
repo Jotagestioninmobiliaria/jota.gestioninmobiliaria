@@ -1633,6 +1633,7 @@ function renderGestion(){
         : estado === 'pagado' ? `<span class="badge" style="background:#EAF3DE;color:#3B6D11">✓ Pagado</span>`
         : estado === 'parcial' ? `<span class="badge" style="background:#FEF3E2;color:#92400E">Parcial</span>`
         : estado === 'no_pago' ? `<span class="badge" style="background:#FCEBEB;color:#A32D2D">No pagó</span>`
+        : estado === 'pago-pendiente' ? `<span class="badge" style="background:#E8F4FD;color:#1565C0;border:1px solid #90CAF9">📎 Comp. recibido</span>`
         : `<span class="badge" style="background:#F1EFE8;color:#5F5E5A">Pendiente</span>`;
       const montoFmt = pago?.monto_cobrado ? `$${Number(pago.monto_cobrado).toLocaleString('es-AR')}` : (a.alq_actual ? `$${Number(a.alq_actual).toLocaleString('es-AR')}` : '—');
       const hayAumento = a.mes_aumento && a.mes_aumento.toUpperCase().includes(mesNombre);
