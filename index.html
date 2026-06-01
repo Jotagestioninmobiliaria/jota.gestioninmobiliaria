@@ -2609,17 +2609,41 @@ function abrirPago(id){
   const a = gAlq.find(x => x.id === id);
   if(!a) return;
   const pago = gPagos.find(p => p.alquiler_id === id);
+  const fmtN = n => n ? '$'+Number(n).toLocaleString('es-AR') : '';
+
+  // Build desglose section if pago has breakdown data
+  let desgloseHtml = '';
+  if(pago && (pago.honorarios || pago.expensas || pago.api || pago.tgi)){
+    desgloseHtml = `<div style="background:var(--bg);border-radius:8px;padding:12px 14px;margin-bottom:14px">
+      <div style="font-size:11px;font-weight:500;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Desglose del detalle enviado</div>
+      ${pago.honorarios > 0 ? `<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span style="color:var(--text-2)">Honorarios</span><span>-${fmtN(pago.honorarios)}</span></div>` : ''}
+      ${pago.expensas > 0 ? `<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span style="color:var(--text-2)">Expensas</span><span>-${fmtN(pago.expensas)}</span></div>` : ''}
+      ${pago.api > 0 ? `<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span style="color:var(--text-2)">API</span><span>-${fmtN(pago.api)}</span></div>` : ''}
+      ${pago.tgi > 0 ? `<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span style="color:var(--text-2)">TGI</span><span>-${fmtN(pago.tgi)}</span></div>` : ''}
+      ${pago.total_duena > 0 ? `<div style="display:flex;justify-content:space-between;font-size:13px;font-weight:600;border-top:1px solid var(--border);padding-top:6px;margin-top:4px"><span>Total a la dueña</span><span style="color:var(--green)">${fmtN(pago.total_duena)}</span></div>` : ''}
+    </div>`;
+  }
+
+  // Comprobante existente
+  const compLink = pago?.comprobante_url ? `<a href="${pago.comprobante_url}" target="_blank" style="font-size:12px;color:var(--blue)">📎 Ver comprobante anterior</a>` : '';
+
   const modal = document.createElement('div');
   modal.id = 'pago-modal';
-  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:9999';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:flex-start;justify-content:center;z-index:9999;padding:20px;overflow-y:auto';
   modal.innerHTML = `
-    <div style="background:var(--surface);border-radius:var(--radius);padding:24px;width:100%;max-width:420px;box-shadow:0 8px 32px rgba(0,0,0,.2)">
-      <div style="font-family:'DM Serif Display',serif;font-size:18px;margin-bottom:4px">Registrar cobro</div>
-      <div style="font-size:13px;color:var(--text-2);margin-bottom:20px">${a.unidad} · ${fmtMes(gMesActual)}</div>
-      <div style="display:grid;gap:14px">
+    <div style="background:var(--surface);border-radius:var(--radius);padding:24px;width:100%;max-width:440px;margin-top:20px;box-shadow:0 8px 32px rgba(0,0,0,.2)">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px">
+        <div>
+          <div style="font-family:'DM Serif Display',serif;font-size:18px;margin-bottom:2px">Registrar cobro</div>
+          <div style="font-size:13px;color:var(--text-2)">${a.unidad} · ${fmtMes(gMesActual)}</div>
+        </div>
+        <button onclick="document.getElementById('pago-modal').remove()" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--text-3)">✕</button>
+      </div>
+      ${desgloseHtml}
+      <div style="display:grid;gap:12px">
         <div class="form-field">
           <label>Estado</label>
-          <select id="pm-estado" style="font-size:16px;padding:12px">
+          <select id="pm-estado" style="font-size:15px;padding:10px">
             <option value="pagado" ${pago?.estado==='pagado'?'selected':''}>✓ Pagado</option>
             <option value="parcial" ${pago?.estado==='parcial'?'selected':''}>Parcial</option>
             <option value="no_pago" ${pago?.estado==='no_pago'?'selected':''}>No pagó</option>
@@ -2627,12 +2651,17 @@ function abrirPago(id){
           </select>
         </div>
         <div class="form-field">
-          <label>Monto cobrado ($)</label>
+          <label>Monto cobrado del inquilino ($)</label>
           <input type="number" inputmode="numeric" id="pm-monto" value="${pago?.monto_cobrado || a.alq_actual || ''}" placeholder="Ej: 511622" style="font-size:18px;padding:12px;font-weight:600">
         </div>
         <div class="form-field">
           <label>Fecha de pago</label>
-          <input type="date" id="pm-fecha" value="${pago?.fecha_pago || new Date().toISOString().split('T')[0]}" style="font-size:16px;padding:12px">
+          <input type="date" id="pm-fecha" value="${pago?.fecha_pago?.split('T')[0] || new Date().toISOString().split('T')[0]}" style="font-size:15px;padding:10px">
+        </div>
+        <div class="form-field">
+          <label>📎 Comprobante de pago del inquilino</label>
+          ${compLink}
+          <input type="file" id="pm-comprobante" accept="image/*,.pdf" style="margin-top:${pago?.comprobante_url?'6px':'0'};font-size:12px;color:var(--text-2);background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px;cursor:pointer;width:100%">
         </div>
         <div class="form-field">
           <label>Observaciones</label>
@@ -2640,8 +2669,8 @@ function abrirPago(id){
         </div>
       </div>
       <div style="display:flex;gap:10px;margin-top:20px">
-        <button onclick="document.getElementById('pago-modal').remove()" style="flex:1;padding:14px;border:1px solid var(--border);border-radius:var(--radius-sm);background:transparent;font-size:15px;cursor:pointer;font-family:inherit">Cancelar</button>
-        <button onclick="guardarPago(${id}${pago?','+pago.id:''})" style="flex:2;padding:14px;background:var(--text);color:white;border:none;border-radius:var(--radius-sm);font-size:15px;font-weight:600;cursor:pointer;font-family:inherit">✓ Confirmar</button>
+        <button onclick="document.getElementById('pago-modal').remove()" style="flex:1;padding:12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:transparent;font-size:14px;cursor:pointer;font-family:inherit">Cancelar</button>
+        <button onclick="guardarPago(${id}${pago?','+pago.id:''})" id="btn-guardar-pago" style="flex:2;padding:12px;background:var(--text);color:white;border:none;border-radius:var(--radius-sm);font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">✓ Confirmar cobro</button>
       </div>
     </div>`;
   document.body.appendChild(modal);
@@ -2652,15 +2681,38 @@ async function guardarPago(alqId, pagoId=null){
   const monto = parseFloat(document.getElementById('pm-monto')?.value) || null;
   const fecha = document.getElementById('pm-fecha')?.value || null;
   const obs = document.getElementById('pm-obs')?.value || null;
+  
+  const btn = document.getElementById('btn-guardar-pago');
+  if(btn){ btn.disabled=true; btn.textContent='Guardando...'; }
+
+  // Upload comprobante if provided
+  let comprobanteUrl = null;
+  const fileInput = document.getElementById('pm-comprobante');
+  const file = fileInput?.files?.[0];
+  if(file){
+    const ext = file.name.split('.').pop();
+    const path = `${alqId}/${gMesActual}_pago.${ext}`;
+    const { error: upErr } = await db.storage.from('comprobantes').upload(path, file, { upsert: true });
+    if(!upErr){
+      const { data: urlData } = db.storage.from('comprobantes').getPublicUrl(path);
+      comprobanteUrl = urlData?.publicUrl || null;
+    }
+  }
+
   document.getElementById('pago-modal')?.remove();
 
+  const updateData = {
+    estado, monto_cobrado: monto, fecha_pago: fecha, observaciones: obs,
+    ...(comprobanteUrl ? { comprobante_url: comprobanteUrl } : {})
+  };
+
   if(pagoId){
-    await db.from('pagos_mensuales').update({estado,monto_cobrado:monto,fecha_pago:fecha,observaciones:obs}).eq('id',pagoId);
+    await db.from('pagos_mensuales').update(updateData).eq('id', pagoId);
   } else {
-    await db.from('pagos_mensuales').insert({alquiler_id:alqId,periodo:gMesActual,estado,monto_cobrado:monto,fecha_pago:fecha,observaciones:obs});
+    await db.from('pagos_mensuales').insert({ alquiler_id: alqId, periodo: gMesActual, ...updateData });
   }
   showToast('Cobro registrado ✓');
-  const r = await db.from('pagos_mensuales').select('*').eq('periodo',gMesActual);
+  const r = await db.from('pagos_mensuales').select('*').eq('periodo', gMesActual);
   if(r.data) gPagos = r.data;
   renderGestion();
 }
