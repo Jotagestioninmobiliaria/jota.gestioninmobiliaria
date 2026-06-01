@@ -2272,9 +2272,11 @@ async function loadResumen(){
       <td style="padding:11px 16px;text-align:center">
         <span style="background:${estadoBg};color:${estadoTxt};font-size:11px;padding:3px 8px;border-radius:4px">${d.pagadas}/${d.unidades.length}</span>
       </td>
-      <td style="padding:11px 16px;text-align:center;white-space:nowrap">
-        <button onclick="generarInformePropietario('${nombre.replace(/'/g,String.fromCharCode(39))}')" style="font-size:11px;padding:4px 8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-family:inherit;margin-right:4px">📄 Doc</button>
-        <button onclick="enviarInformePorEmail('${nombre.replace(/'/g,String.fromCharCode(39))}')" style="font-size:11px;padding:4px 8px;background:#E8F0FE;border:1px solid #4285F4;border-radius:6px;cursor:pointer;font-family:inherit;color:#1a73e8">📧 Email</button>
+      <td style="padding:8px 12px;text-align:center">
+        <div style="display:flex;flex-direction:column;gap:4px;align-items:center">
+          <button onclick="generarInformePropietario('${nombre.replace(/'/g,String.fromCharCode(39))}')" style="font-size:11px;padding:3px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-family:inherit;white-space:nowrap">📄 Doc</button>
+          <button onclick="enviarInformePorEmail('${nombre.replace(/'/g,String.fromCharCode(39))}')" style="font-size:11px;padding:3px 10px;background:#E8F0FE;border:1px solid #4285F4;border-radius:6px;cursor:pointer;font-family:inherit;color:#1a73e8;white-space:nowrap">✉ Email</button>
+        </div>
       </td>
     </tr>`;
   }).join('');
