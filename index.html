@@ -2272,8 +2272,9 @@ async function loadResumen(){
       <td style="padding:11px 16px;text-align:center">
         <span style="background:${estadoBg};color:${estadoTxt};font-size:11px;padding:3px 8px;border-radius:4px">${d.pagadas}/${d.unidades.length}</span>
       </td>
-      <td style="padding:11px 16px;text-align:center">
-        <button onclick="generarInformePropietario('${nombre.replace(/'/g,String.fromCharCode(39))}')" style="font-size:11px;padding:4px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-family:inherit">📄 Informe</button>
+      <td style="padding:11px 16px;text-align:center;white-space:nowrap">
+        <button onclick="generarInformePropietario('${nombre.replace(/'/g,String.fromCharCode(39))}')" style="font-size:11px;padding:4px 8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-family:inherit;margin-right:4px">📄 Doc</button>
+        <button onclick="enviarInformePorEmail('${nombre.replace(/'/g,String.fromCharCode(39))}')" style="font-size:11px;padding:4px 8px;background:#E8F0FE;border:1px solid #4285F4;border-radius:6px;cursor:pointer;font-family:inherit;color:#1a73e8">📧 Email</button>
       </td>
     </tr>`;
   }).join('');
@@ -2481,6 +2482,117 @@ ${body}
   } catch(e) {
     console.error('Error generando informe:', e);
     alert('Error al generar el informe: ' + e.message);
+  }
+}
+
+async function enviarInformePorEmail(propNombre){
+  try {
+  const [mesNum, anio] = gMesActual.split('-');
+  const mesesNombres = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const mesNombre = mesesNombres[parseInt(mesNum)];
+  const hoy = new Date();
+  const fechaDoc = `Rosario, ${hoy.getDate()} de ${mesNombre} de ${anio}.`;
+
+  // Fetch propietario email
+  const propietarioNombre = propNombre;
+  const alqsProp = gAlq.filter(a => a.propietario === propNombre && a.alq_actual > 0);
+  const ids = alqsProp.map(a => a.id);
+
+  // Get propietario email
+  let emailProp = '';
+  if(alqsProp.length > 0 && alqsProp[0].propietario_id){
+    const { data: propData } = await db.from('propietarios').select('email,nombre').eq('id', alqsProp[0].propietario_id).single();
+    emailProp = propData?.email || '';
+  }
+
+  let pagosData = [];
+  if(ids.length > 0){
+    const { data } = await db.from('pagos_mensuales').select('*').eq('periodo', gMesActual).in('alquiler_id', ids);
+    pagosData = data || [];
+  }
+  const pagosMap = {};
+  pagosData.forEach(p => pagosMap[p.alquiler_id] = p);
+
+  const fmtNum = n => {
+    if(!n && n !== 0) return '0';
+    const num = Number(n);
+    return num % 1 !== 0 ? num.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2}) : num.toLocaleString('es-AR');
+  };
+
+  let body = fechaDoc + '\n\n';
+  let grandTotal = 0;
+  const transferDates = [];
+
+  alqsProp.forEach((a, idx) => {
+    const pago = pagosMap[a.id];
+    if(idx > 0) body += '\n\n';
+
+    body += `${a.unidad || ''}\n`;
+    body += `Inquilino: ${a.inquilino || ''}\n`;
+    if(a.inicio_contrato) body += `Fecha de Inicio de contrato: ${a.inicio_contrato}\n`;
+    if(a.fin_contrato) body += `Fecha de finalización de contrato: ${a.fin_contrato}\n`;
+    body += '\n';
+
+    if(!pago){
+      body += `Alquiler ${mesNombre} $${fmtNum(a.alq_actual)}.-\n`;
+      body += `Sin pago registrado este mes.\n`;
+      return;
+    }
+
+    if(pago.diferencia_monto > 0){
+      body += `${pago.diferencia_descripcion || 'Diferencia mes anterior'} $${fmtNum(pago.diferencia_monto)}.-\n`;
+    }
+
+    const diasMes = new Date(parseInt(anio), parseInt(mesNum), 0).getDate();
+    if(a.alq_anterior && a.alq_anterior > 0 && a.alq_anterior !== a.alq_actual){
+      const diaInicio = a.inicio_contrato ? parseInt(a.inicio_contrato.split('/')[0]) : 1;
+      const diasAnt = diaInicio - 1;
+      const diasNue = diasMes - diasAnt;
+      if(diasAnt > 0){
+        body += `Alquiler ${mesNombre} ${diasAnt} días ($${fmtNum(a.alq_anterior)}.-) = $${fmtNum((a.alq_anterior/diasMes)*diasAnt)}.-\n`;
+        body += `Alquiler ${mesNombre} ${diasNue} días ($${fmtNum(a.alq_actual)}.-) = $${fmtNum((a.alq_actual/diasMes)*diasNue)}.-\n`;
+      } else {
+        body += `Alquiler ${mesNombre} $${fmtNum(a.alq_actual)}.-\n`;
+      }
+    } else {
+      body += `Alquiler ${mesNombre} $${fmtNum(a.alq_actual)}.-\n`;
+    }
+
+    if(a.tgi_es_ingreso && pago.tgi > 0) body += `TGI ${mesNombre} $${fmtNum(pago.tgi)}.-\n`;
+    if(pago.honorarios > 0){
+      const pct = a.comision_pct ? ` ${(a.comision_pct*100).toFixed(0)}%` : '';
+      body += `Se descuentan honorarios inmobiliarios${pct} ($${fmtNum(pago.honorarios)}.-)\n`;
+    }
+    if(pago.expensas > 0) body += `Se descuentan expensas extraordinarias ($${fmtNum(pago.expensas)}.-)\n`;
+    if(pago.api > 0) body += `Se descuenta API ($${fmtNum(pago.api)}.-)\n`;
+    if(pago.tgi > 0 && !a.tgi_es_ingreso) body += `Se descuenta TGI ($${fmtNum(pago.tgi)}.-)\n`;
+    if(pago.otros && Array.isArray(pago.otros)){
+      pago.otros.forEach(o => { if(o.val > 0) body += `Se descuenta ${o.label} ($${fmtNum(o.val)}.-)\n`; });
+    }
+
+    body += '\n';
+    const fechaPago = pago.fecha_pago ? new Date(pago.fecha_pago).toLocaleDateString('es-AR') : '—';
+    const totalUnidad = pago.total_duena || 0;
+    grandTotal += totalUnidad;
+    if(pago.fecha_pago) transferDates.push(fechaPago);
+    body += `Total transferido el ${fechaPago} $${fmtNum(totalUnidad)}.-\n`;
+  });
+
+  if(alqsProp.length > 1 && grandTotal > 0){
+    body += `\nTOTAL: $${fmtNum(grandTotal)}.-\n`;
+    const datesStr = [...new Set(transferDates)].join(', ');
+    if(datesStr) body += `TOTAL transferido el ${datesStr}\n`;
+  }
+
+  body += `\n--\nJimena Rubio Mat. N° 1462 - jrubio@maopropiedades.com`;
+
+  const subject = encodeURIComponent(`Informe ${mesNombre} ${anio} - MAO Propiedades`);
+  const bodyEncoded = encodeURIComponent(body);
+  const gmailUrl = `https://mail.google.com/mail/u/0/?view=cm&to=${encodeURIComponent(emailProp)}&su=${subject}&body=${bodyEncoded}`;
+  window.open(gmailUrl, '_blank');
+  } catch(e) {
+    console.error('Error:', e);
+    alert('Error: ' + e.message);
   }
 }
 
