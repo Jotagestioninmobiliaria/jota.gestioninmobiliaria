@@ -197,7 +197,6 @@
   .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(10px); background: var(--text); color: white; padding: 10px 20px; border-radius: var(--radius-sm); font-size: 13px; opacity: 0; transition: all .2s; pointer-events: none; z-index: 9999; white-space: nowrap; }
   .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 </style>
-<script src="https://unpkg.com/docx@7.8.2/build/index.umd.js"></script>
 </head>
 <body>
 
@@ -2348,194 +2347,133 @@ const LOGO_MAO_B64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAJYAAACWCAIA
 
 async function generarInformePropietario(propNombre){
   try {
-  if(!window.docx){ alert('La librería de documentos aún no cargó. Esperá unos segundos y volvé a intentar.'); return; }
-  const { Document, Packer, Paragraph, TextRun, ImageRun, AlignmentType, UnderlineType, Footer } = window.docx;
-  
   const [mesNum, anio] = gMesActual.split('-');
   const mesesNombres = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
   const mesNombre = mesesNombres[parseInt(mesNum)];
   const hoy = new Date();
   const fechaDoc = `Rosario, ${hoy.getDate()} de ${mesNombre} de ${anio}.`;
 
-  // Fetch pagos del mes para este propietario
   const alqsProp = gAlq.filter(a => a.propietario === propNombre && a.alq_actual > 0);
   const ids = alqsProp.map(a => a.id);
-  
   let pagosData = [];
   if(ids.length > 0){
-    const { data } = await db.from('pagos_mensuales')
-      .select('*').eq('periodo', gMesActual).in('alquiler_id', ids);
+    const { data } = await db.from('pagos_mensuales').select('*').eq('periodo', gMesActual).in('alquiler_id', ids);
     pagosData = data || [];
   }
   const pagosMap = {};
   pagosData.forEach(p => pagosMap[p.alquiler_id] = p);
 
-  // Logo image
-  const logoResp = await fetch(LOGO_MAO_B64);
-  const logoBlob = await logoResp.blob();
-  const logoArr = new Uint8Array(await logoBlob.arrayBuffer());
-
   const fmtNum = n => {
-    if(!n || n === 0) return '0';
-    return Number(n).toLocaleString('es-AR', {minimumFractionDigits: n%1!==0?2:0, maximumFractionDigits: 2});
+    if(!n && n !== 0) return '0';
+    const num = Number(n);
+    return num % 1 !== 0 ? num.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2}) : num.toLocaleString('es-AR');
   };
 
-  const children = [];
-
-  // Header row: logo right-aligned + date
-  children.push(new Paragraph({
-    children: [
-      new ImageRun({ data: logoArr, transformation: { width: 80, height: 80 }, floating: { horizontalPosition: { align: 'right' }, verticalPosition: { offset: 914400 } } })
-    ]
-  }));
-  
-  children.push(new Paragraph({
-    alignment: AlignmentType.RIGHT,
-    children: [new TextRun({ text: fechaDoc, size: 22 })]
-  }));
-
-  children.push(new Paragraph({ text: '' }));
-  children.push(new Paragraph({ text: '' }));
-
+  let body = '';
   let grandTotal = 0;
   const transferDates = [];
 
   alqsProp.forEach((a, idx) => {
     const pago = pagosMap[a.id];
-    
-    // Unit title (bold + underline)
-    children.push(new Paragraph({
-      children: [new TextRun({ text: a.unidad || '', bold: true, underline: { type: UnderlineType.SINGLE } })],
-      spacing: { before: idx > 0 ? 400 : 0 }
-    }));
+    if(idx > 0) body += '<br><br>';
 
-    // Inquilino
-    children.push(new Paragraph({
-      children: [
-        new TextRun({ text: 'Inquilino: ' }),
-        new TextRun({ text: a.inquilino || '', bold: true })
-      ]
-    }));
+    body += `<p><strong><u>${a.unidad || ''}</u></strong></p>`;
+    body += `<p>Inquilino: <strong>${a.inquilino || ''}</strong></p>`;
+    if(a.inicio_contrato) body += `<p><u>Fecha de Inicio de contrato:</u> ${a.inicio_contrato}</p>`;
+    if(a.fin_contrato) body += `<p><u>Fecha de finalización de contrato:</u> ${a.fin_contrato}</p>`;
+    body += '<br>';
 
-    // Contract dates
-    if(a.inicio_contrato) children.push(new Paragraph({
-      children: [
-        new TextRun({ text: 'Fecha de Inicio de contrato: ', underline: { type: UnderlineType.SINGLE } }),
-        new TextRun({ text: a.inicio_contrato })
-      ]
-    }));
-    if(a.fin_contrato) children.push(new Paragraph({
-      children: [
-        new TextRun({ text: 'Fecha de finalización de contrato: ', underline: { type: UnderlineType.SINGLE } }),
-        new TextRun({ text: a.fin_contrato })
-      ]
-    }));
-
-    children.push(new Paragraph({ text: '' }));
-
-    if(!pago) {
-      children.push(new Paragraph({
-        children: [new TextRun({ text: `Alquiler ${mesNombre} $${fmtNum(a.alq_actual)}.-`, bold: true })]
-      }));
-      children.push(new Paragraph({ children: [new TextRun({ text: 'Sin pago registrado este mes.' })] }));
-      children.push(new Paragraph({ text: '' }));
+    if(!pago){
+      body += `<p><strong>Alquiler ${mesNombre} $${fmtNum(a.alq_actual)}.-</strong></p>`;
+      body += `<p>Sin pago registrado este mes.</p>`;
       return;
     }
 
     // Diferencia mes anterior
     if(pago.diferencia_monto > 0){
       const difDesc = pago.diferencia_descripcion || 'Diferencia mes anterior';
-      children.push(new Paragraph({
-        children: [new TextRun({ text: `${difDesc} $${fmtNum(pago.diferencia_monto)}.-`, bold: true })]
-      }));
+      body += `<p><strong>${difDesc} $${fmtNum(pago.diferencia_monto)}.-</strong></p>`;
     }
 
-    // Alquiler - check if split month (alq_anterior set and both different)
-    if(a.alq_anterior && a.alq_anterior > 0 && a.alq_anterior !== a.alq_actual && pago.monto_cobrado){
-      // Calculate days from total
-      const totalAlq = pago.total_duena + pago.honorarios + (pago.expensas||0) + (pago.api||0) + (pago.tgi&&!a.tgi_es_ingreso?pago.tgi:0) - (a.tgi_es_ingreso?pago.tgi||0:0);
-      const diasMes = new Date(parseInt(anio), parseInt(mesNum), 0).getDate();
+    // Alquiler - split month check
+    const diasMes = new Date(parseInt(anio), parseInt(mesNum), 0).getDate();
+    if(a.alq_anterior && a.alq_anterior > 0 && a.alq_anterior !== a.alq_actual){
       const diaInicio = a.inicio_contrato ? parseInt(a.inicio_contrato.split('/')[0]) : 1;
       const diasAnt = diaInicio - 1;
       const diasNue = diasMes - diasAnt;
       if(diasAnt > 0){
-        children.push(new Paragraph({ children: [new TextRun({ text: `Alquiler ${mesNombre} ${diasAnt} días ($${fmtNum(a.alq_anterior)}.-) = $${fmtNum((a.alq_anterior/diasMes)*diasAnt)}.-`, bold: true })] }));
-        children.push(new Paragraph({ children: [new TextRun({ text: `Alquiler ${mesNombre} ${diasNue} días ($${fmtNum(a.alq_actual)}.-) = $${fmtNum((a.alq_actual/diasMes)*diasNue)}.-`, bold: true })] }));
+        body += `<p><strong>Alquiler ${mesNombre} ${diasAnt} días ($${fmtNum(a.alq_anterior)}.-) = $${fmtNum((a.alq_anterior/diasMes)*diasAnt)}.-</strong></p>`;
+        body += `<p><strong>Alquiler ${mesNombre} ${diasNue} días ($${fmtNum(a.alq_actual)}.-) = $${fmtNum((a.alq_actual/diasMes)*diasNue)}.-</strong></p>`;
       } else {
-        children.push(new Paragraph({ children: [new TextRun({ text: `Alquiler ${mesNombre} $${fmtNum(a.alq_actual)}.-`, bold: true })] }));
+        body += `<p><strong>Alquiler ${mesNombre} $${fmtNum(a.alq_actual)}.-</strong></p>`;
       }
     } else {
-      children.push(new Paragraph({ children: [new TextRun({ text: `Alquiler ${mesNombre} $${fmtNum(a.alq_actual)}.-`, bold: true })] }));
+      body += `<p><strong>Alquiler ${mesNombre} $${fmtNum(a.alq_actual)}.-</strong></p>`;
     }
 
     // TGI como ingreso
     if(a.tgi_es_ingreso && pago.tgi > 0){
-      children.push(new Paragraph({ children: [new TextRun({ text: `TGI ${mesNombre} $${fmtNum(pago.tgi)}.-`, bold: true })] }));
+      body += `<p><strong>TGI ${mesNombre} $${fmtNum(pago.tgi)}.-</strong></p>`;
     }
 
-    // Deductions
+    // Deducciones
     if(pago.honorarios > 0){
       const pct = a.comision_pct ? ` ${(a.comision_pct*100).toFixed(0)}%` : '';
-      children.push(new Paragraph({ children: [new TextRun({ text: `Se descuentan honorarios administrativos${pct} ($${fmtNum(pago.honorarios)}.-)` })] }));
+      body += `<p>Se descuentan honorarios inmobiliarios${pct} ($${fmtNum(pago.honorarios)}.-)`;
     }
-    if(pago.expensas > 0) children.push(new Paragraph({ children: [new TextRun({ text: `Se descuentan expensas extraordinarias ($${fmtNum(pago.expensas)}.-)` })] }));
-    if(pago.api > 0) children.push(new Paragraph({ children: [new TextRun({ text: `Se descuenta API ($${fmtNum(pago.api)}.-)` })] }));
-    if(pago.tgi > 0 && !a.tgi_es_ingreso) children.push(new Paragraph({ children: [new TextRun({ text: `Se descuenta TGI ($${fmtNum(pago.tgi)}.-)` })] }));
-    
-    // Otros
+    if(pago.expensas > 0) body += `<p>Se descuentan expensas extraordinarias ($${fmtNum(pago.expensas)}.-)`;
+    if(pago.api > 0) body += `<p>Se descuenta API ($${fmtNum(pago.api)}.-)`;
+    if(pago.tgi > 0 && !a.tgi_es_ingreso) body += `<p>Se descuenta TGI ($${fmtNum(pago.tgi)}.-)`;
     if(pago.otros && Array.isArray(pago.otros)){
       pago.otros.forEach(o => {
-        if(o.val > 0) children.push(new Paragraph({ children: [new TextRun({ text: `Se descuenta ${o.label} ($${fmtNum(o.val)}.-)` })] }));
+        if(o.val > 0) body += `<p>Se descuenta ${o.label} ($${fmtNum(o.val)}.-)`;
       });
     }
 
-    children.push(new Paragraph({ text: '' }));
-
-    // Total transferido
+    body += '<br>';
     const fechaPago = pago.fecha_pago ? new Date(pago.fecha_pago).toLocaleDateString('es-AR') : '—';
     const totalUnidad = pago.total_duena || 0;
     grandTotal += totalUnidad;
     if(pago.fecha_pago) transferDates.push(fechaPago);
-
-    children.push(new Paragraph({
-      children: [new TextRun({ text: `Total transferido el ${fechaPago} $${fmtNum(totalUnidad)}.-`, bold: true })]
-    }));
-
-    children.push(new Paragraph({ text: '' }));
+    body += `<p><strong>Total transferido el ${fechaPago} $${fmtNum(totalUnidad)}.-</strong></p>`;
   });
 
-  // Grand total if multiple units
+  // Grand total
   if(alqsProp.length > 1 && grandTotal > 0){
-    children.push(new Paragraph({
-      children: [new TextRun({ text: `TOTAL: $${fmtNum(grandTotal)}.-`, bold: true, underline: { type: UnderlineType.SINGLE } })]
-    }));
+    body += '<br>';
+    body += `<p><strong><u>TOTAL: $${fmtNum(grandTotal)}.-</u></strong></p>`;
     const datesStr = [...new Set(transferDates)].join(', ');
-    if(datesStr) children.push(new Paragraph({
-      children: [new TextRun({ text: `TOTAL transferido el ${datesStr}`, bold: true, underline: { type: UnderlineType.SINGLE } })]
-    }));
+    if(datesStr) body += `<p><strong><u>TOTAL transferido el ${datesStr}</u></strong></p>`;
   }
 
-  // Footer
-  const doc = new Document({
-    sections: [{
-      properties: {},
-      footers: {
-        default: new Footer({
-          children: [new Paragraph({
-            alignment: AlignmentType.CENTER,
-            children: [new TextRun({ text: 'Jimena Rubio Mat. N° 1462 - jrubio@maopropiedades.com', size: 18, color: '888888' })]
-          })]
-        })
-      },
-      children
-    }]
-  });
+  const html = `
+<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+<head>
+<meta charset='utf-8'>
+<style>
+  body { font-family: Calibri, Arial, sans-serif; font-size: 11pt; margin: 2cm; }
+  p { margin: 4px 0; line-height: 1.4; }
+  .header-table { width: 100%; margin-bottom: 40px; }
+  .footer { border-top: 1px solid #ccc; margin-top: 40px; padding-top: 6px; text-align: center; font-size: 9pt; color: #888; }
+</style>
+</head>
+<body>
+<table class="header-table"><tr>
+  <td style="width:60%"></td>
+  <td style="text-align:right">
+    <img src="${LOGO_MAO_B64}" width="80" height="80"><br>
+    <span style="font-size:10pt">${fechaDoc}</span>
+  </td>
+</tr></table>
+${body}
+<div class="footer">Jimena Rubio Mat. N° 1462 - jrubio@maopropiedades.com</div>
+</body></html>`;
 
-  const blob = await Packer.toBlob(doc);
+  const blob = new Blob([html], { type: 'application/msword' });
   const url = URL.createObjectURL(blob);
   const a2 = document.createElement('a');
   a2.href = url;
-  a2.download = `Informe_${propNombre.replace(/\s+/g,'_')}_${mesNombre}_${anio}.docx`;
+  a2.download = `Informe_${propNombre.replace(/\s+/g,'_')}_${mesNombre}_${anio}.doc`;
   document.body.appendChild(a2);
   a2.click();
   document.body.removeChild(a2);
