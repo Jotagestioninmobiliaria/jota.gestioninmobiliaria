@@ -214,7 +214,7 @@ async function init(){
   // Calcular montos
   const alqActual = alq.alq_actual || 0;
   const comisionPct = alq.comision_pct || 10;
-  const totalMao = Math.round(alqActual * comisionPct / 100);
+  const totalMao = Math.round(alqActual * comisionPct);
   const totalProp = alqActual - totalMao;
 
   // Render unit info
