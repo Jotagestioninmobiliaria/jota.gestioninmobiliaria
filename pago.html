@@ -96,12 +96,6 @@
       <div class="periodo" id="unit-periodo">—</div>
     </div>
 
-    <!-- Pagos discriminados -->
-    <div class="card">
-      <h3>Detalle de pagos del mes</h3>
-      <div id="pagos-detalle">Cargando...</div>
-    </div>
-
     <!-- Historial -->
     <div class="card">
       <h3>Historial de pagos</h3>
@@ -115,9 +109,14 @@
         ✓ Ya registraste un pago este mes. Podés actualizarlo si es necesario.
       </div>
       <div class="form-group">
-        <label>Monto total pagado ($)</label>
-        <input type="number" id="f-monto" inputmode="numeric" placeholder="Ej: 511622">
-        <div class="hint">Ingresá el monto total que depositaste</div>
+        <label>🏠 Monto abonado a Propietario/a ($)</label>
+        <input type="number" id="f-monto-prop" inputmode="numeric" placeholder="Ej: 460460">
+        <div class="hint" id="hint-prop"></div>
+      </div>
+      <div class="form-group">
+        <label>🏢 Monto Honorarios inmobiliarios ($)</label>
+        <input type="number" id="f-monto-mao" inputmode="numeric" placeholder="Ej: 51162">
+        <div class="hint" id="hint-mao"></div>
       </div>
       <div class="form-group">
         <label>Fecha de pago</label>
@@ -222,40 +221,6 @@ async function init(){
   document.getElementById('unit-inquilino').textContent = alq.inquilino || '—';
   document.getElementById('unit-periodo').textContent = `Mes actual: ${fmtMesLabel(mesActual)} · Alquiler: ${fmtNum(alqActual)}`;
 
-  // Render pagos discriminados
-  const bancoPropHTML = prop ? `
-    <div class="banco-row"><span class="banco-key">Titular</span><span class="banco-val">${prop.titular || prop.nombre || '—'}</span></div>
-    ${prop.banco ? `<div class="banco-row"><span class="banco-key">Banco</span><span class="banco-val">${prop.banco}</span></div>` : ''}
-    ${prop.nro_cuenta ? `<div class="banco-row"><span class="banco-key">N° cuenta</span><span class="banco-val">${prop.nro_cuenta}</span></div>` : ''}
-    ${prop.cbu ? `<div class="banco-row"><span class="banco-key">CBU</span><span class="banco-val" style="font-size:11px">${prop.cbu}</span></div>` : ''}
-  ` : '<div style="font-size:13px;color:#aaa">Consultar datos bancarios con la inmobiliaria</div>';
-
-  document.getElementById('pagos-detalle').innerHTML = `
-    <div class="pago-card propietario">
-      <div class="pago-card-header">
-        <span class="pago-card-label">🏠 Propietario/a</span>
-        <span class="pago-card-monto">${fmtNum(totalProp)}</span>
-      </div>
-      <div class="banco-info">${bancoPropHTML}</div>
-    </div>
-    <div class="pago-card inmobiliaria">
-      <div class="pago-card-header">
-        <span class="pago-card-label">🏢 Honorarios inmobiliarios</span>
-        <span class="pago-card-monto">${fmtNum(totalMao)}</span>
-      </div>
-      <div class="banco-info">
-        <div class="banco-row"><span class="banco-key">Titular</span><span class="banco-val">Juliana Rubio</span></div>
-        <div class="banco-row"><span class="banco-key">CVU</span><span class="banco-val" style="font-size:11px">0000003100003402497322</span></div>
-        <div class="banco-row"><span class="banco-key">Alias</span><span class="banco-val">PROPIEDADESMAO</span></div>
-      </div>
-    </div>
-    <hr class="divider">
-    <div class="total-row">
-      <span class="total-label">Total a depositar</span>
-      <span class="total-val">${fmtNum(alqActual)}</span>
-    </div>
-  `;
-
   // Render historial
   if(pagos && pagos.length > 0){
     document.getElementById('historial-list').innerHTML = pagos.map(p => {
@@ -276,12 +241,14 @@ async function init(){
     }).join('');
   }
 
-  // Pre-fill form
-  document.getElementById('f-monto').value = alq.alq_actual || '';
+  // Pre-fill form con montos calculados
+  document.getElementById('f-monto-prop').value = totalProp;
+  document.getElementById('f-monto-mao').value = totalMao;
+  document.getElementById('hint-prop').textContent = `Sugerido: ${fmtNum(totalProp)}`;
+  document.getElementById('hint-mao').textContent = `Sugerido: ${fmtNum(totalMao)}`;
   document.getElementById('f-fecha').value = new Date().toISOString().split('T')[0];
   if(pagoExistente){
     document.getElementById('ya-registrado').style.display = 'block';
-    if(pagoExistente.monto_cobrado) document.getElementById('f-monto').value = pagoExistente.monto_cobrado;
     if(pagoExistente.fecha_pago) document.getElementById('f-fecha').value = pagoExistente.fecha_pago.split('T')[0];
   }
 
@@ -302,12 +269,15 @@ function onFileSelect(input, tipo){
 }
 
 async function submitPago(){
-  const monto = parseFloat(document.getElementById('f-monto').value);
+  const montoProp = parseFloat(document.getElementById('f-monto-prop').value);
+  const montoMao = parseFloat(document.getElementById('f-monto-mao').value);
   const fecha = document.getElementById('f-fecha').value;
   const fileProp = document.getElementById('file-input-prop').files[0];
   const fileMao = document.getElementById('file-input-mao').files[0];
+  const monto = (montoProp || 0) + (montoMao || 0);
 
-  if(!monto || monto <= 0){ alert('Ingresá el monto pagado'); return; }
+  if(!montoProp || montoProp <= 0){ alert('Ingresá el monto abonado al propietario'); return; }
+  if(!montoMao || montoMao <= 0){ alert('Ingresá el monto de honorarios'); return; }
   if(!fecha){ alert('Ingresá la fecha de pago'); return; }
   if(!fileProp && !fileMao){ alert('Adjuntá al menos un comprobante de pago'); return; }
 
