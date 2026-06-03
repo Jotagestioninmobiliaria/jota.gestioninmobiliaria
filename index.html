@@ -1671,6 +1671,7 @@ function renderGestion(){
         <td onclick="event.stopPropagation()" style="white-space:nowrap;display:flex;flex-direction:column;gap:4px;border:none">
           ${tieneImporte ? `<button class="btn-sm" onclick="abrirDetalleWhatsApp(${a.id})">📤 Detalle</button>` : ''}
           <button class="btn-sm" onclick="abrirPago(${a.id})">💰 Cobro</button>
+          <button class="btn-sm" onclick="copiarLinkPago(${a.id})" title="Copiar link de pago para inquilino">🔗 Link</button>
         </td>
       </tr>`;
     }).join('');
@@ -1723,6 +1724,15 @@ function renderGestion(){
       <button class="btn-primary" onclick="abrirCobroRapido()" style="white-space:nowrap">⚡ Cobro rápido</button>
     </div>
     <div id="gestion-list">${rows}</div>`;
+}
+
+function copiarLinkPago(id){
+  const url = `${location.origin}/pago.html?id=${id}`;
+  navigator.clipboard.writeText(url).then(() => {
+    showToast('🔗 Link copiado al portapapeles');
+  }).catch(() => {
+    prompt('Copiá este link:', url);
+  });
 }
 
 function abrirCobroRapido(){
