@@ -1905,7 +1905,7 @@ async function abrirDetalleWhatsApp(alqId){
   const mesNombre = fmtMes(gMesActual);
   const alqActual = a.alq_actual || 0;
   const alqAnterior = a.alq_anterior || 0;
-  const honorarios = a.comision_adm || Math.round(alqActual * (a.comision_pct || 0));
+  const honorarios = Math.round(a.comision_adm || Math.round(alqActual * (a.comision_pct || 0)));
   const [mesNum] = gMesActual.split('-');
   const nombresMes = ['','ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
   const hayAumento = !!(a.mes_aumento && a.mes_aumento.toUpperCase().includes(nombresMes[parseInt(mesNum)]));
@@ -2126,6 +2126,15 @@ async function generarMensajeWA(){
     if(prop.alias_mao && !prop.cbu) bankLines += `Alias: ${prop.alias_mao}\n`;
   }
   const maoDesc = totalMao > honorarios ? '(honorarios+otros)' : '(honorarios inmobiliarios)';
+
+  let bankPropLines = '';
+  if(prop){
+    bankPropLines += `Titular: ${prop.titular||prop.nombre}\n`;
+    if(prop.banco) bankPropLines += `Banco: ${prop.banco}\n`;
+    if(prop.nro_cuenta) bankPropLines += `N° de cuenta: ${prop.nro_cuenta}\n`;
+    if(prop.cbu) bankPropLines += `CBU: ${prop.cbu}\n`;
+  }
+
   const msg =
 `Hola ${nombre} buen día! cómo estás?
 Te paso detalle del mes.
@@ -2133,7 +2142,7 @@ Te paso detalle del mes.
 ${alqLinea}
 ${dedLineas}
 TOTAL a depositar a la dueña $${totalDuena.toLocaleString('es-AR')}.-
-${bankLines}
+${bankPropLines}
 TOTAL a depositar a Mao propiedades $${Math.round(totalMao).toLocaleString('es-AR')}.- ${maoDesc}
 Número de CVU: 0000003100003402497322
 Alias de CVU: PROPIEDADESMAO
