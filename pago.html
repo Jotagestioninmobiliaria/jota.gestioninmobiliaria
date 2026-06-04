@@ -244,7 +244,7 @@ async function init(){
     }).join('');
   }
 
-  // Pre-fill form con montos calculados
+  // Pre-fill form con montos calculados (siempre usa alq_actual)
   document.getElementById('f-monto-prop').value = totalProp;
   document.getElementById('f-monto-mao').value = totalMao;
   document.getElementById('hint-prop').textContent = `Sugerido: ${fmtNum(totalProp)}`;
@@ -252,7 +252,6 @@ async function init(){
   document.getElementById('f-fecha').value = new Date().toISOString().split('T')[0];
   if(pagoExistente){
     document.getElementById('ya-registrado').style.display = 'block';
-    if(pagoExistente.fecha_pago) document.getElementById('f-fecha').value = pagoExistente.fecha_pago.split('T')[0];
   }
 
   document.getElementById('loading').style.display = 'none';
