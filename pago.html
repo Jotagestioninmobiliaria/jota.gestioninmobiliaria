@@ -217,12 +217,14 @@ async function init(){
   const alqActual = alq.alq_actual || 0;
   const comisionPct = alq.comision_pct || 10;
   const totalMao = Math.round(alqActual * comisionPct);
-  const totalProp = alqActual - totalMao;
+  const expensas = pagoExistente?.expensas || 0;
+  const totalProp = alqActual - totalMao - expensas;
 
   // Render unit info
   document.getElementById('unit-name').textContent = alq.unidad || '—';
   document.getElementById('unit-inquilino').textContent = alq.inquilino || '—';
-  document.getElementById('unit-periodo').textContent = `Mes actual: ${fmtMesLabel(mesActual)} · Alquiler: ${fmtNum(alqActual)}`;
+  const expInfo = expensas > 0 ? ` · Expensas: ${fmtNum(expensas)}` : '';
+  document.getElementById('unit-periodo').textContent = `Mes actual: ${fmtMesLabel(mesActual)} · Alquiler: ${fmtNum(alqActual)}${expInfo}`;
 
   // Render historial
   if(pagos && pagos.length > 0){
@@ -247,8 +249,18 @@ async function init(){
   // Pre-fill form con montos calculados (siempre usa alq_actual)
   document.getElementById('f-monto-prop').value = totalProp;
   document.getElementById('f-monto-mao').value = totalMao;
-  document.getElementById('hint-prop').textContent = `Sugerido: ${fmtNum(totalProp)}`;
+  document.getElementById('hint-prop').textContent = expensas > 0
+    ? `Sugerido: ${fmtNum(totalProp)} (alquiler ${fmtNum(alqActual)} - honorarios ${fmtNum(totalMao)} - expensas ${fmtNum(expensas)})`
+    : `Sugerido: ${fmtNum(totalProp)}`;
   document.getElementById('hint-mao').textContent = `Sugerido: ${fmtNum(totalMao)}`;
+
+  // Mostrar expensas si hay
+  if(expensas > 0){
+    const expDiv = document.createElement('div');
+    expDiv.style.cssText = 'background:#FEF3E2;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:13px;color:#92400E;border-left:3px solid #F59E0B';
+    expDiv.innerHTML = `⚠️ Este mes incluye expensas extraordinarias de <strong>${fmtNum(expensas)}</strong> que se descuentan del monto al propietario/a.`;
+    document.getElementById('form-card').insertBefore(expDiv, document.getElementById('form-card').querySelector('.form-group'));
+  }
   document.getElementById('f-fecha').value = new Date().toISOString().split('T')[0];
   if(pagoExistente){
     document.getElementById('ya-registrado').style.display = 'block';
