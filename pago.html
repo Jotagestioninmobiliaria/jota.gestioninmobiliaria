@@ -142,7 +142,7 @@ async function init() {
     const periodo = `${mes}-${anio}`;
     const meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 
-    document.getElementById('unit-name').textContent = [a.domicilio, a.unidad].filter(Boolean).join(' ') || 'Sin dirección';
+    document.getElementById('unit-name').textContent = a.unidad || 'Sin dirección';
     document.getElementById('unit-detail').textContent = a.inquilino || '';
     document.getElementById('periodo-badge').textContent = `${meses[now.getMonth()]} ${anio}`;
     document.getElementById('monto-badge').textContent = a.alq_actual ? `Alquiler: $${Number(a.alq_actual).toLocaleString('es-AR')}` : '';
