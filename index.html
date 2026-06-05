@@ -2073,7 +2073,12 @@ function agregarDedExtra(){
 
 async function generarMensajeWA(){
   const a = _detalleAlq;
-  const prop = _detalleProp;
+  let prop = _detalleProp;
+  if(!prop && a && a.propietario_id){
+    const { data } = await db.from('propietarios').select('*').eq('id', a.propietario_id).single();
+    prop = data;
+    _detalleProp = data;
+  }
   if(!a) return;
   const nombre = (a.inquilino||'').split(' ')[0];
   const mesNombre = fmtMes(gMesActual);
