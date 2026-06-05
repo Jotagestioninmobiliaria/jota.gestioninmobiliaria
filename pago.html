@@ -3,355 +3,250 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Registrar pago — MAO Propiedades</title>
-<meta property="og:title" content="MAO Propiedades — Registro de pagos">
-<meta property="og:description" content="Registrá tu pago mensual de alquiler">
-<meta property="og:site_name" content="MAO Propiedades">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<title>Registrar Pago - MAO Propiedades</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Serif+Display&display=swap" rel="stylesheet">
 <style>
-  * { margin:0; padding:0; box-sizing:border-box; }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background:#F5F4F0; min-height:100vh; color:#1a1a1a; }
-  .header { background:white; padding:16px 20px; display:flex; align-items:center; gap:12px; border-bottom:1px solid #e5e5e5; box-shadow:0 1px 4px rgba(0,0,0,.06); }
-  .header-text h1 { font-size:16px; font-weight:600; color:#1a1a1a; }
-  .header-text p { font-size:12px; color:#888; }
-  .container { max-width:520px; margin:0 auto; padding:20px 16px; }
-  .card { background:white; border-radius:14px; padding:20px; margin-bottom:16px; box-shadow:0 1px 4px rgba(0,0,0,.06); }
-  .unit-header { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:4px; }
-  .unit-name { font-size:18px; font-weight:600; }
-  .badge { font-size:11px; padding:3px 8px; border-radius:20px; background:#EAF3DE; color:#3B6D11; font-weight:500; }
-  .inquilino { font-size:14px; color:#666; margin-top:2px; }
-  .periodo { font-size:13px; color:#999; margin-top:6px; }
-  h3 { font-size:13px; font-weight:600; color:#888; text-transform:uppercase; letter-spacing:.5px; margin-bottom:12px; }
-  .historial-row { display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid #f0f0f0; font-size:14px; }
-  .historial-row:last-child { border-bottom:none; }
-  .estado-badge { font-size:11px; padding:2px 8px; border-radius:10px; font-weight:500; }
-  .pagado { background:#EAF3DE; color:#3B6D11; }
-  .pendiente { background:#F5F4F0; color:#888; }
-  .pago-pendiente { background:#FEF3E2; color:#92400E; }
-
-  /* Pagos discriminados */
-  .pagos-section { margin-bottom:16px; }
-  .pagos-title { font-size:13px; font-weight:600; color:#888; text-transform:uppercase; letter-spacing:.5px; margin-bottom:12px; }
-  .pago-card { border:1px solid #e8e8e8; border-radius:12px; padding:16px; margin-bottom:10px; }
-  .pago-card.propietario { border-left:3px solid #3B6D11; }
-  .pago-card.inmobiliaria { border-left:3px solid #E8471C; }
-  .pago-card-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
-  .pago-card-label { font-size:12px; font-weight:600; color:#888; text-transform:uppercase; }
-  .pago-card-monto { font-size:22px; font-weight:700; }
-  .pago-card.propietario .pago-card-monto { color:#3B6D11; }
-  .pago-card.inmobiliaria .pago-card-monto { color:#E8471C; }
-  .banco-info { font-size:13px; color:#444; line-height:1.8; }
-  .banco-info strong { color:#1a1a1a; }
-  .banco-row { display:flex; justify-content:space-between; padding:3px 0; border-bottom:1px solid #f5f5f5; }
-  .banco-row:last-child { border-bottom:none; }
-  .banco-key { font-size:12px; color:#888; }
-  .banco-val { font-size:12px; font-weight:500; color:#1a1a1a; }
-
-  label { font-size:13px; font-weight:500; color:#555; display:block; margin-bottom:6px; }
-  input, textarea { width:100%; padding:12px; border:1px solid #e0e0e0; border-radius:10px; font-size:16px; font-family:inherit; background:#fafafa; transition:border .2s; }
-  input:focus, textarea:focus { outline:none; border-color:#E8471C; background:white; }
-  .file-zone { border:2px dashed #ddd; border-radius:10px; padding:20px; text-align:center; cursor:pointer; background:#fafafa; transition:all .2s; }
-  .file-zone:hover { border-color:#E8471C; background:#fff5f3; }
-  .file-zone.has-file { border-color:#3B6D11; background:#EAF3DE; }
-  .file-icon { font-size:28px; margin-bottom:8px; }
-  .file-text { font-size:14px; color:#888; }
-  .file-name { font-size:13px; font-weight:500; color:#3B6D11; margin-top:4px; }
-  .btn { width:100%; padding:16px; background:#E8471C; color:white; border:none; border-radius:12px; font-size:16px; font-weight:600; cursor:pointer; font-family:inherit; transition:background .2s; }
-  .btn:hover { background:#c93d17; }
-  .btn:disabled { background:#ccc; cursor:not-allowed; }
-  .form-group { margin-bottom:16px; }
-  .success { text-align:center; padding:40px 20px; }
-  .success-icon { font-size:60px; margin-bottom:16px; }
-  .success h2 { font-size:22px; font-weight:600; margin-bottom:8px; }
-  .success p { font-size:15px; color:#666; }
-  .loading { text-align:center; padding:60px 20px; color:#888; }
-  .error-state { text-align:center; padding:40px 20px; color:#A32D2D; }
-  .hint { font-size:12px; color:#aaa; margin-top:4px; }
-  #file-input { display:none; }
-  .divider { border:none; border-top:1px solid #f0f0f0; margin:12px 0; }
-  .total-row { display:flex; justify-content:space-between; align-items:center; padding:8px 0; }
-  .total-label { font-size:13px; color:#666; }
-  .total-val { font-size:15px; font-weight:700; color:#1a1a1a; }
+  :root {
+    --bg: #F7F5F0; --surface: #FFFFFF; --border: #E8E4DC;
+    --text: #1A1814; --text-2: #6B6560; --text-3: #A8A39C;
+    --accent: #C4973A; --green: #3B6D11; --green-bg: #EAF3DE;
+    --blue: #185FA5; --blue-bg: #E6F1FB; --red: #A32D2D; --red-bg: #FCEBEB;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; font-size: 14px; }
+  .container { max-width: 480px; margin: 0 auto; padding: 24px 16px 48px; }
+  .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 28px; padding-bottom: 20px; border-bottom: 1px solid var(--border); }
+  .logo { font-family: 'DM Serif Display', serif; font-size: 20px; color: var(--text); }
+  .logo span { display: block; font-family: 'DM Sans', sans-serif; font-size: 10px; color: var(--text-3); text-transform: uppercase; letter-spacing: .5px; font-weight: 400; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; }
+  .card-title { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--text-3); margin-bottom: 12px; font-weight: 500; }
+  .unit-name { font-size: 18px; font-weight: 600; color: var(--text); }
+  .unit-detail { font-size: 13px; color: var(--text-2); margin-top: 4px; }
+  .badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 500; }
+  .badge-green { background: var(--green-bg); color: var(--green); }
+  .badge-blue { background: var(--blue-bg); color: var(--blue); }
+  .badge-red { background: #FCEBEB; color: var(--red); }
+  .field { margin-bottom: 16px; }
+  .field label { display: block; font-size: 12px; color: var(--text-2); margin-bottom: 6px; font-weight: 500; }
+  .field input { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); font-family: inherit; font-size: 14px; background: var(--bg); color: var(--text); outline: none; transition: border .15s; }
+  .field input:focus { border-color: var(--accent); }
+  .upload-area { border: 2px dashed var(--border); border-radius: var(--radius); padding: 20px; text-align: center; cursor: pointer; transition: all .15s; background: var(--bg); }
+  .upload-area:hover, .upload-area.dragover { border-color: var(--accent); background: #FBF8F2; }
+  .upload-icon { font-size: 28px; margin-bottom: 8px; }
+  .upload-text { font-size: 13px; color: var(--text-2); }
+  .upload-text strong { color: var(--accent); }
+  .file-preview { margin-top: 10px; padding: 8px 12px; background: var(--green-bg); border-radius: var(--radius); font-size: 12px; color: var(--green); display: flex; align-items: center; gap: 8px; }
+  .btn-submit { width: 100%; padding: 14px; background: var(--accent); color: white; border: none; border-radius: var(--radius); font-family: inherit; font-size: 15px; font-weight: 600; cursor: pointer; transition: opacity .15s; margin-top: 8px; }
+  .btn-submit:hover { opacity: .9; }
+  .btn-submit:disabled { opacity: .5; cursor: not-allowed; }
+  .success { background: var(--green-bg); border: 1px solid var(--green); border-radius: var(--radius); padding: 24px; text-align: center; display: none; }
+  .success-icon { font-size: 40px; margin-bottom: 12px; }
+  .success h2 { color: var(--green); font-size: 18px; margin-bottom: 8px; }
+  .success p { color: var(--text-2); font-size: 13px; }
+  .error-msg { background: var(--red-bg); border: 1px solid var(--red); color: var(--red); border-radius: var(--radius); padding: 12px 16px; font-size: 13px; margin-top: 12px; display: none; }
+  .historial-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .historial-item:last-child { border-bottom: none; }
+  .loading { text-align: center; padding: 40px; color: var(--text-3); }
 </style>
 </head>
 <body>
-
-<div class="header">
-  <div class="header-text">
-    <h1>MAO Propiedades</h1>
-    <p>Registro de pagos</p>
-  </div>
-</div>
-
 <div class="container">
-  <div id="loading" class="card loading">Cargando información...</div>
-  <div id="error" class="card error-state" style="display:none"></div>
-  <div id="content" style="display:none">
-    <!-- Unit info -->
-    <div class="card" id="unit-card">
-      <div class="unit-header">
-        <div>
-          <div class="unit-name" id="unit-name">—</div>
-          <div class="inquilino" id="unit-inquilino">—</div>
-        </div>
-        <span class="badge">Activo</span>
-      </div>
-      <div class="periodo" id="unit-periodo">—</div>
-    </div>
-
-    <!-- Historial -->
-    <div class="card">
-      <h3>Historial de pagos</h3>
-      <div id="historial-list"><div style="color:#aaa;font-size:14px">Sin registros aún</div></div>
-    </div>
-
-    <!-- Form -->
-    <div class="card" id="form-card">
-      <h3>Registrar pago del mes</h3>
-      <div id="ya-registrado" style="display:none;background:#EAF3DE;border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px;color:#3B6D11">
-        ✓ Ya registraste un pago este mes. Podés actualizarlo si es necesario.
-      </div>
-      <div class="form-group">
-        <label>🏠 Monto abonado a Propietario/a ($)</label>
-        <input type="number" id="f-monto-prop" inputmode="numeric" placeholder="Ej: 460460">
-        <div class="hint" id="hint-prop"></div>
-      </div>
-      <div class="form-group">
-        <label>🏢 Monto Honorarios inmobiliarios ($)</label>
-        <input type="number" id="f-monto-mao" inputmode="numeric" placeholder="Ej: 51162">
-        <div class="hint" id="hint-mao"></div>
-      </div>
-      <div class="form-group">
-        <label>Fecha de pago</label>
-        <input type="date" id="f-fecha">
-      </div>
-      <div class="form-group">
-        <label>🏠 Comprobante — Propietario/a</label>
-        <div class="file-zone" id="file-zone-prop" onclick="document.getElementById('file-input-prop').click()">
-          <div class="file-icon">📎</div>
-          <div class="file-text">Tocá para adjuntar imagen o PDF</div>
-          <div class="file-name" id="file-name-prop" style="display:none"></div>
-        </div>
-        <input type="file" id="file-input-prop" accept="image/*,.pdf" onchange="onFileSelect(this, 'prop')">
-        <div class="hint">Comprobante del depósito al propietario/a</div>
-      </div>
-      <div class="form-group">
-        <label>🏢 Comprobante — Honorarios inmobiliarios</label>
-        <div class="file-zone" id="file-zone-mao" onclick="document.getElementById('file-input-mao').click()">
-          <div class="file-icon">📎</div>
-          <div class="file-text">Tocá para adjuntar imagen o PDF</div>
-          <div class="file-name" id="file-name-mao" style="display:none"></div>
-        </div>
-        <input type="file" id="file-input-mao" accept="image/*,.pdf" onchange="onFileSelect(this, 'mao')">
-        <div class="hint">Comprobante del depósito a Jota Gestión</div>
-      </div>
-      <button class="btn" id="btn-submit" onclick="submitPago()">Enviar pago</button>
-    </div>
+  <div class="header">
+    <div class="logo">MAO<span>Propiedades</span></div>
+    <div style="font-size:11px;color:var(--text-3)">Formulario de pago</div>
   </div>
 
-  <div id="success" style="display:none" class="card success">
-    <div class="success-icon">✅</div>
-    <h2>¡Pago registrado!</h2>
-    <p>Tu comprobante fue enviado correctamente.<br>MAO Propiedades lo revisará a la brevedad.</p>
+  <div id="loading" class="loading">Cargando información...</div>
+  <div id="error-carga" style="display:none" class="card" style="color:var(--red)">No se pudo cargar la información. Verificá el link.</div>
+
+  <div id="contenido" style="display:none">
+    <div class="card">
+      <div class="card-title">Tu unidad</div>
+      <div class="unit-name" id="unit-name">—</div>
+      <div class="unit-detail" id="unit-detail">—</div>
+      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+        <span class="badge badge-blue" id="periodo-badge">—</span>
+        <span class="badge badge-green" id="monto-badge">—</span>
+      </div>
+    </div>
+
+    <div id="historial-card" class="card" style="display:none">
+      <div class="card-title">Historial reciente</div>
+      <div id="historial-lista"></div>
+    </div>
+
+    <div id="form-card" class="card">
+      <div class="card-title">Registrar pago</div>
+
+      <div class="field">
+        <label>Monto pagado ($)</label>
+        <input type="number" id="monto" placeholder="0">
+      </div>
+      <div class="field">
+        <label>Fecha de pago</label>
+        <input type="date" id="fecha">
+      </div>
+      <div class="field">
+        <label>Comprobante de pago</label>
+        <div class="upload-area" id="upload-area" onclick="document.getElementById('file-input').click()">
+          <div class="upload-icon">📎</div>
+          <div class="upload-text">Tocá para adjuntar imagen o PDF<br><strong>JPG, PNG o PDF</strong></div>
+        </div>
+        <input type="file" id="file-input" accept="image/*,.pdf" style="display:none">
+        <div class="file-preview" id="file-preview" style="display:none">
+          <span>📄</span><span id="file-name"></span>
+        </div>
+      </div>
+
+      <button class="btn-submit" id="btn-enviar" onclick="enviarPago()">Enviar pago</button>
+      <div class="error-msg" id="error-msg"></div>
+    </div>
+
+    <div class="success" id="success">
+      <div class="success-icon">✅</div>
+      <h2>¡Pago registrado!</h2>
+      <p>Tu comprobante fue enviado correctamente.<br>MAO Propiedades lo revisará en breve.</p>
+    </div>
   </div>
 </div>
 
 <script>
-const SUPABASE_URL = 'https://ombrbobzmiedicapfmqw.supabase.co';
-const SUPABASE_KEY = 'sb_publishable__9phOIiCS8AYLNK4bTwV5w_l3d1JZnr';
-const { createClient } = supabase;
-const db = createClient(SUPABASE_URL, SUPABASE_KEY);
+const SUPA_URL = "https://ombrbobzmiedicapfmqw.supabase.co";
+const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9tYnJib2J6bWllZGljYXBmbXF3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwMzAxOTMsImV4cCI6MjA5MjYwNjE5M30.MmoRaU1a2BqcOV7e8V1QVEh5JlL5bPEBFRO-XmfCels";
 
-const params = new URLSearchParams(window.location.search);
-const alqId = parseInt(params.get('id'));
+let alquilerId = null;
+let fileData = null;
 
-let alqData = null;
-let pagoExistente = null;
+const params = new URLSearchParams(location.search);
+alquilerId = params.get('id');
 
-const mesesNombres = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-
-function getMesActual(){
-  const now = new Date();
-  return `${String(now.getMonth()+1).padStart(2,'0')}-${now.getFullYear()}`;
-}
-
-function fmtMesLabel(periodo){
-  if(!periodo) return '—';
-  const [m, y] = periodo.split('-');
-  return `${mesesNombres[parseInt(m)]} ${y}`;
-}
-
-function fmtNum(n){
-  if(!n && n !== 0) return '$0';
-  return '$' + Math.round(Number(n)).toLocaleString('es-AR');
-}
-
-async function init(){
-  if(!alqId){
-    showError('Link inválido. Por favor contactá a Jota Gestión Inmobiliaria.');
+async function init() {
+  if (!alquilerId) {
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('error-carga').style.display = 'block';
     return;
   }
 
-  // Load alquiler con propietario
-  const { data: alq, error } = await db.from('alquileres').select('*').eq('id', alqId).single();
-  if(error || !alq){
-    showError('No se encontró la unidad. Por favor contactá a Jota Gestión Inmobiliaria.');
-    return;
+  try {
+    const r = await fetch(`${SUPA_URL}/rest/v1/alquileres?id=eq.${alquilerId}&select=*`, {
+      headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}` }
+    });
+    const data = await r.json();
+    if (!data || !data.length) throw new Error('No encontrado');
+    const a = data[0];
+
+    const now = new Date();
+    const mes = String(now.getMonth() + 1).padStart(2, '0');
+    const anio = now.getFullYear();
+    const periodo = `${mes}-${anio}`;
+    const meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+    document.getElementById('unit-name').textContent = `${a.domicilio} ${a.unidad || ''}`.trim();
+    document.getElementById('unit-detail').textContent = a.inquilino || '';
+    document.getElementById('periodo-badge').textContent = `${meses[now.getMonth()]} ${anio}`;
+    document.getElementById('monto-badge').textContent = a.alq_actual ? `Alquiler: $${Number(a.alq_actual).toLocaleString('es-AR')}` : '';
+    document.getElementById('monto').value = a.alq_actual || '';
+    document.getElementById('fecha').value = now.toISOString().split('T')[0];
+
+    // Historial
+    const rh = await fetch(`${SUPA_URL}/rest/v1/pagos_mensuales?alquiler_id=eq.${alquilerId}&order=id.desc&limit=6&select=periodo,estado,monto_cobrado,fecha_pago`, {
+      headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}` }
+    });
+    const hist = await rh.json();
+    if (hist && hist.length > 0) {
+      const lista = document.getElementById('historial-lista');
+      hist.forEach(p => {
+        const div = document.createElement('div');
+        div.className = 'historial-item';
+        const estadoColor = p.estado === 'pagado' ? 'badge-green' : p.estado === 'pago-pendiente' ? 'badge-blue' : 'badge-red';
+        const estadoLabel = p.estado === 'pagado' ? 'Pagado' : p.estado === 'pago-pendiente' ? 'Pendiente' : p.estado || '—';
+        div.innerHTML = `
+          <div>
+            <div style="font-size:13px;font-weight:500">${p.periodo || '—'}</div>
+            ${p.fecha_pago ? `<div style="font-size:11px;color:var(--text-3)">${new Date(p.fecha_pago).toLocaleDateString('es-AR')}</div>` : ''}
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            ${p.monto_cobrado ? `<span style="font-size:13px;color:var(--text-2)">$${Number(p.monto_cobrado).toLocaleString('es-AR')}</span>` : ''}
+            <span class="badge ${estadoColor}">${estadoLabel}</span>
+          </div>`;
+        lista.appendChild(div);
+      });
+      document.getElementById('historial-card').style.display = 'block';
+    }
+
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('contenido').style.display = 'block';
+
+  } catch(e) {
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('error-carga').style.display = 'block';
   }
-  alqData = alq;
-
-  // Load propietario si hay propietario_id
-  let prop = null;
-  if(alq.propietario_id){
-    const { data: propData } = await db.from('propietarios').select('*').eq('id', alq.propietario_id).single();
-    prop = propData;
-  }
-
-  // Load pagos history
-  const { data: pagos } = await db.from('pagos_mensuales').select('*').eq('alquiler_id', alqId).order('periodo', {ascending: false}).limit(6);
-
-  const mesActual = getMesActual();
-  pagoExistente = (pagos||[]).find(p => p.periodo === mesActual);
-
-  // Calcular montos
-  const alqActual = alq.alq_actual || 0;
-  const comisionPct = alq.comision_pct || 10;
-  const totalMao = Math.round(alqActual * comisionPct);
-  const expensas = pagoExistente?.expensas || 0;
-  const totalProp = alqActual - totalMao - expensas;
-
-  // Render unit info
-  document.getElementById('unit-name').textContent = alq.unidad || '—';
-  document.getElementById('unit-inquilino').textContent = alq.inquilino || '—';
-  const expInfo = expensas > 0 ? ` · Expensas: ${fmtNum(expensas)}` : '';
-  document.getElementById('unit-periodo').textContent = `Mes actual: ${fmtMesLabel(mesActual)} · Alquiler: ${fmtNum(alqActual)}${expInfo}`;
-
-  // Render historial
-  if(pagos && pagos.length > 0){
-    document.getElementById('historial-list').innerHTML = pagos.map(p => {
-      const estadoClass = p.estado === 'pagado' ? 'pagado' : p.estado === 'pago-pendiente' ? 'pago-pendiente' : 'pendiente';
-      const estadoLabel = p.estado === 'pagado' ? '✓ Pagado' : p.estado === 'pago-pendiente' ? '⏳ En revisión' : p.estado === 'parcial' ? 'Parcial' : 'Pendiente';
-      const comp = p.comprobante_url ? `<a href="${p.comprobante_url}" target="_blank" style="font-size:11px;color:#E8471C;margin-left:8px">📎</a>` : '';
-      return `<div class="historial-row">
-        <div>
-          <div style="font-weight:500">${fmtMesLabel(p.periodo)}</div>
-          ${p.fecha_pago ? `<div style="font-size:12px;color:#aaa">${new Date(p.fecha_pago).toLocaleDateString('es-AR')}</div>` : ''}
-        </div>
-        <div style="display:flex;align-items:center">
-          <div style="font-weight:600;margin-right:8px">${p.monto_cobrado ? fmtNum(p.monto_cobrado) : '—'}</div>
-          <span class="estado-badge ${estadoClass}">${estadoLabel}</span>
-          ${comp}
-        </div>
-      </div>`;
-    }).join('');
-  }
-
-  // Pre-fill form con montos calculados (siempre usa alq_actual)
-  document.getElementById('f-monto-prop').value = totalProp;
-  document.getElementById('f-monto-mao').value = totalMao;
-  document.getElementById('hint-prop').textContent = expensas > 0
-    ? `Sugerido: ${fmtNum(totalProp)} (alquiler ${fmtNum(alqActual)} - honorarios ${fmtNum(totalMao)} - expensas ${fmtNum(expensas)})`
-    : `Sugerido: ${fmtNum(totalProp)}`;
-  document.getElementById('hint-mao').textContent = `Sugerido: ${fmtNum(totalMao)}`;
-
-  // Mostrar expensas si hay
-  if(expensas > 0){
-    const expDiv = document.createElement('div');
-    expDiv.style.cssText = 'background:#FEF3E2;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:13px;color:#92400E;border-left:3px solid #F59E0B';
-    expDiv.innerHTML = `⚠️ Este mes incluye expensas extraordinarias de <strong>${fmtNum(expensas)}</strong> que se descuentan del monto al propietario/a.`;
-    document.getElementById('form-card').insertBefore(expDiv, document.getElementById('form-card').querySelector('.form-group'));
-  }
-  document.getElementById('f-fecha').value = new Date().toISOString().split('T')[0];
-  if(pagoExistente){
-    document.getElementById('ya-registrado').style.display = 'block';
-  }
-
-  document.getElementById('loading').style.display = 'none';
-  document.getElementById('content').style.display = 'block';
 }
 
-function onFileSelect(input, tipo){
-  const file = input.files[0];
-  if(!file) return;
-  const zone = document.getElementById(`file-zone-${tipo}`);
-  zone.classList.add('has-file');
-  zone.querySelector('.file-icon').textContent = '✅';
-  zone.querySelector('.file-text').textContent = 'Archivo seleccionado:';
-  const nameEl = document.getElementById(`file-name-${tipo}`);
-  nameEl.textContent = file.name;
-  nameEl.style.display = 'block';
-}
+// File upload
+document.getElementById('file-input').addEventListener('change', function() {
+  const file = this.files[0];
+  if (!file) return;
+  document.getElementById('file-name').textContent = file.name;
+  document.getElementById('file-preview').style.display = 'flex';
+  const reader = new FileReader();
+  reader.onload = e => {
+    fileData = { base64: e.target.result.split(',')[1], nombre: file.name };
+  };
+  reader.readAsDataURL(file);
+});
 
-async function submitPago(){
-  const montoProp = parseFloat(document.getElementById('f-monto-prop').value);
-  const montoMao = parseFloat(document.getElementById('f-monto-mao').value);
-  const fecha = document.getElementById('f-fecha').value;
-  const fileProp = document.getElementById('file-input-prop').files[0];
-  const fileMao = document.getElementById('file-input-mao').files[0];
-  const monto = (montoProp || 0) + (montoMao || 0);
+const ua = document.getElementById('upload-area');
+ua.addEventListener('dragover', e => { e.preventDefault(); ua.classList.add('dragover'); });
+ua.addEventListener('dragleave', () => ua.classList.remove('dragover'));
+ua.addEventListener('drop', e => {
+  e.preventDefault(); ua.classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (file) { document.getElementById('file-input').files = e.dataTransfer.files; document.getElementById('file-input').dispatchEvent(new Event('change')); }
+});
 
-  if(!montoProp || montoProp <= 0){ alert('Ingresá el monto abonado al propietario'); return; }
-  if(!montoMao || montoMao <= 0){ alert('Ingresá el monto de honorarios'); return; }
-  if(!fecha){ alert('Ingresá la fecha de pago'); return; }
-  if(!fileProp && !fileMao){ alert('Adjuntá al menos un comprobante de pago'); return; }
+async function enviarPago() {
+  const monto = document.getElementById('monto').value;
+  const fecha = document.getElementById('fecha').value;
+  const btn = document.getElementById('btn-enviar');
+  const errEl = document.getElementById('error-msg');
+  errEl.style.display = 'none';
 
-  const btn = document.getElementById('btn-submit');
   btn.disabled = true;
   btn.textContent = 'Enviando...';
 
-  try{
-    let comprobanteUrl = null;
-    let comprobanteUrl2 = null;
+  const now = new Date();
+  const periodo = `${String(now.getMonth()+1).padStart(2,'0')}-${now.getFullYear()}`;
 
-    // Subir comprobante propietario
-    if(fileProp){
-      const ext = fileProp.name.split('.').pop();
-      const path = `${alqId}/${getMesActual()}_prop.${ext}`;
-      const { error: upErr } = await db.storage.from('comprobantes').upload(path, fileProp, { upsert: true });
-      if(upErr) throw new Error('Error al subir comprobante propietario: ' + upErr.message);
-      const { data: urlData } = db.storage.from('comprobantes').getPublicUrl(path);
-      comprobanteUrl = urlData?.publicUrl;
-    }
+  try {
+    const body = {
+      alquiler_id: parseInt(alquilerId),
+      periodo,
+      monto_cobrado: monto ? parseFloat(monto) : null,
+      fecha_pago: fecha || null,
+      estado: 'pago-pendiente',
+      ...(fileData && { comprobante_base64: fileData.base64, comprobante_nombre: fileData.nombre })
+    };
 
-    // Subir comprobante inmobiliaria
-    if(fileMao){
-      const ext = fileMao.name.split('.').pop();
-      const path = `${alqId}/${getMesActual()}_mao.${ext}`;
-      const { error: upErr } = await db.storage.from('comprobantes').upload(path, fileMao, { upsert: true });
-      if(upErr) throw new Error('Error al subir comprobante inmobiliaria: ' + upErr.message);
-      const { data: urlData } = db.storage.from('comprobantes').getPublicUrl(path);
-      comprobanteUrl2 = urlData?.publicUrl;
-    }
-
-    const response = await fetch('/api/registrar-pago', {
+    const res = await fetch('/api/registrar-pago', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        alquiler_id: alqId,
-        periodo: getMesActual(),
-        monto_cobrado: monto,
-        fecha_pago: fecha,
-        comprobante_url: comprobanteUrl,
-        comprobante_url2: comprobanteUrl2,
-        pago_existente_id: pagoExistente ? pagoExistente.id : null
-      })
+      body: JSON.stringify(body)
     });
-    const result = await response.json();
-    if(!response.ok) throw new Error(result.error || 'Error al registrar pago');
 
-    document.getElementById('content').style.display = 'none';
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || 'Error al registrar');
+
+    document.getElementById('form-card').style.display = 'none';
     document.getElementById('success').style.display = 'block';
-  } catch(e){
+
+  } catch(e) {
+    errEl.textContent = 'Error: ' + e.message;
+    errEl.style.display = 'block';
     btn.disabled = false;
     btn.textContent = 'Enviar pago';
-    alert('Error: ' + e.message);
   }
-}
-
-function showError(msg){
-  document.getElementById('loading').style.display = 'none';
-  document.getElementById('error').style.display = 'block';
-  document.getElementById('error').textContent = msg;
 }
 
 init();
