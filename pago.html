@@ -10,7 +10,7 @@
     --bg: #F7F5F0; --surface: #FFFFFF; --border: #E8E4DC;
     --text: #1A1814; --text-2: #6B6560; --text-3: #A8A39C;
     --accent: #C4973A; --green: #3B6D11; --green-bg: #EAF3DE;
-    --blue: #185FA5; --blue-bg: #E6F1FB; --red: #A32D2D; --red-bg: #FCEBEB;
+    --blue: #185FA5; --blue-bg: #E6F1FB; --red: #A32D2D;
     --radius: 10px;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -26,28 +26,29 @@
   .badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 500; }
   .badge-green { background: var(--green-bg); color: var(--green); }
   .badge-blue { background: var(--blue-bg); color: var(--blue); }
-  .badge-red { background: #FCEBEB; color: var(--red); }
   .field { margin-bottom: 16px; }
   .field label { display: block; font-size: 12px; color: var(--text-2); margin-bottom: 6px; font-weight: 500; }
-  .field input { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); font-family: inherit; font-size: 14px; background: var(--bg); color: var(--text); outline: none; transition: border .15s; }
+  .field input[type=number], .field input[type=date] { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); font-family: inherit; font-size: 14px; background: var(--bg); color: var(--text); outline: none; transition: border .15s; }
   .field input:focus { border-color: var(--accent); }
-  .upload-area { border: 2px dashed var(--border); border-radius: var(--radius); padding: 20px; text-align: center; cursor: pointer; transition: all .15s; background: var(--bg); }
-  .upload-area:hover, .upload-area.dragover { border-color: var(--accent); background: #FBF8F2; }
-  .upload-icon { font-size: 28px; margin-bottom: 8px; }
-  .upload-text { font-size: 13px; color: var(--text-2); }
+  .section-label { font-size: 12px; font-weight: 600; color: var(--text-2); text-transform: uppercase; letter-spacing: .4px; margin: 20px 0 12px; border-top: 1px solid var(--border); padding-top: 16px; }
+  .upload-area { border: 2px dashed var(--border); border-radius: var(--radius); padding: 16px; text-align: center; cursor: pointer; transition: all .15s; background: var(--bg); }
+  .upload-area:hover { border-color: var(--accent); background: #FBF8F2; }
+  .upload-icon { font-size: 24px; margin-bottom: 6px; }
+  .upload-text { font-size: 12px; color: var(--text-2); }
   .upload-text strong { color: var(--accent); }
-  .file-preview { margin-top: 10px; padding: 8px 12px; background: var(--green-bg); border-radius: var(--radius); font-size: 12px; color: var(--green); display: flex; align-items: center; gap: 8px; }
+  .file-preview { margin-top: 8px; padding: 7px 12px; background: var(--green-bg); border-radius: var(--radius); font-size: 12px; color: var(--green); display: none; align-items: center; gap: 8px; }
   .btn-submit { width: 100%; padding: 14px; background: var(--accent); color: white; border: none; border-radius: var(--radius); font-family: inherit; font-size: 15px; font-weight: 600; cursor: pointer; transition: opacity .15s; margin-top: 8px; }
   .btn-submit:hover { opacity: .9; }
   .btn-submit:disabled { opacity: .5; cursor: not-allowed; }
-  .success { background: var(--green-bg); border: 1px solid var(--green); border-radius: var(--radius); padding: 24px; text-align: center; display: none; }
+  .success { background: var(--green-bg); border: 1px solid var(--green); border-radius: var(--radius); padding: 28px; text-align: center; display: none; }
   .success-icon { font-size: 40px; margin-bottom: 12px; }
   .success h2 { color: var(--green); font-size: 18px; margin-bottom: 8px; }
   .success p { color: var(--text-2); font-size: 13px; }
-  .error-msg { background: var(--red-bg); border: 1px solid var(--red); color: var(--red); border-radius: var(--radius); padding: 12px 16px; font-size: 13px; margin-top: 12px; display: none; }
+  .error-msg { background: #FCEBEB; border: 1px solid var(--red); color: var(--red); border-radius: var(--radius); padding: 12px 16px; font-size: 13px; margin-top: 12px; display: none; }
   .historial-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
   .historial-item:last-child { border-bottom: none; }
   .loading { text-align: center; padding: 40px; color: var(--text-3); }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 </style>
 </head>
 <body>
@@ -58,7 +59,7 @@
   </div>
 
   <div id="loading" class="loading">Cargando información...</div>
-  <div id="error-carga" style="display:none" class="card" style="color:var(--red)">No se pudo cargar la información. Verificá el link.</div>
+  <div id="error-carga" class="card" style="display:none;color:var(--red)">No se pudo cargar la información. Verificá el link.</div>
 
   <div id="contenido" style="display:none">
     <div class="card">
@@ -77,25 +78,44 @@
     </div>
 
     <div id="form-card" class="card">
-      <div class="card-title">Registrar pago</div>
+      <div class="card-title">Registrar pago del mes</div>
 
-      <div class="field">
-        <label>Monto pagado ($)</label>
-        <input type="number" id="monto" placeholder="0">
-      </div>
       <div class="field">
         <label>Fecha de pago</label>
         <input type="date" id="fecha">
       </div>
+
+      <div class="section-label">💰 Pago al propietario/a</div>
       <div class="field">
-        <label>Comprobante de pago</label>
-        <div class="upload-area" id="upload-area" onclick="document.getElementById('file-input').click()">
+        <label>Monto pagado al propietario/a ($)</label>
+        <input type="number" id="monto-propietario" placeholder="0">
+      </div>
+      <div class="field">
+        <label>Comprobante de pago al propietario/a</label>
+        <div class="upload-area" onclick="document.getElementById('file-propietario').click()">
           <div class="upload-icon">📎</div>
-          <div class="upload-text">Tocá para adjuntar imagen o PDF<br><strong>JPG, PNG o PDF</strong></div>
+          <div class="upload-text">Tocá para adjuntar<br><strong>JPG, PNG o PDF</strong></div>
         </div>
-        <input type="file" id="file-input" accept="image/*,.pdf" style="display:none">
-        <div class="file-preview" id="file-preview" style="display:none">
-          <span>📄</span><span id="file-name"></span>
+        <input type="file" id="file-propietario" accept="image/*,.pdf" style="display:none">
+        <div class="file-preview" id="preview-propietario">
+          <span>📄</span><span id="nombre-propietario"></span>
+        </div>
+      </div>
+
+      <div class="section-label">🏢 Pago honorarios inmobiliaria</div>
+      <div class="field">
+        <label>Monto honorarios inmobiliaria ($)</label>
+        <input type="number" id="monto-honorarios" placeholder="0">
+      </div>
+      <div class="field">
+        <label>Comprobante de pago honorarios</label>
+        <div class="upload-area" onclick="document.getElementById('file-honorarios').click()">
+          <div class="upload-icon">📎</div>
+          <div class="upload-text">Tocá para adjuntar<br><strong>JPG, PNG o PDF</strong></div>
+        </div>
+        <input type="file" id="file-honorarios" accept="image/*,.pdf" style="display:none">
+        <div class="file-preview" id="preview-honorarios">
+          <span>📄</span><span id="nombre-honorarios"></span>
         </div>
       </div>
 
@@ -116,7 +136,8 @@ const SUPA_URL = "https://ombrbobzmiedicapfmqw.supabase.co";
 const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9tYnJib2J6bWllZGljYXBmbXF3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwMzAxOTMsImV4cCI6MjA5MjYwNjE5M30.MmoRaU1a2BqcOV7e8V1QVEh5JlL5bPEBFRO-XmfCels";
 
 let alquilerId = null;
-let fileData = null;
+let filePropietario = null;
+let fileHonorarios = null;
 
 const params = new URLSearchParams(location.search);
 alquilerId = params.get('id');
@@ -127,7 +148,6 @@ async function init() {
     document.getElementById('error-carga').style.display = 'block';
     return;
   }
-
   try {
     const r = await fetch(`${SUPA_URL}/rest/v1/alquileres?id=eq.${alquilerId}&select=*`, {
       headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}` }
@@ -139,14 +159,13 @@ async function init() {
     const now = new Date();
     const mes = String(now.getMonth() + 1).padStart(2, '0');
     const anio = now.getFullYear();
-    const periodo = `${mes}-${anio}`;
     const meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 
     document.getElementById('unit-name').textContent = a.unidad || 'Sin dirección';
     document.getElementById('unit-detail').textContent = a.inquilino || '';
     document.getElementById('periodo-badge').textContent = `${meses[now.getMonth()]} ${anio}`;
     document.getElementById('monto-badge').textContent = a.alq_actual ? `Alquiler: $${Number(a.alq_actual).toLocaleString('es-AR')}` : '';
-    document.getElementById('monto').value = a.alq_actual || '';
+    document.getElementById('monto-propietario').placeholder = a.alq_actual ? Number(a.alq_actual).toLocaleString('es-AR') : '0';
     document.getElementById('fecha').value = now.toISOString().split('T')[0];
 
     // Historial
@@ -159,8 +178,8 @@ async function init() {
       hist.forEach(p => {
         const div = document.createElement('div');
         div.className = 'historial-item';
-        const estadoColor = p.estado === 'pagado' ? 'badge-green' : p.estado === 'pago-pendiente' ? 'badge-blue' : 'badge-red';
-        const estadoLabel = p.estado === 'pagado' ? 'Pagado' : p.estado === 'pago-pendiente' ? 'Pendiente' : p.estado || '—';
+        const estadoColor = p.estado === 'pagado' ? 'badge-green' : 'badge-blue';
+        const estadoLabel = p.estado === 'pagado' ? 'Pagado' : 'Pendiente';
         div.innerHTML = `
           <div>
             <div style="font-size:13px;font-weight:500">${p.periodo || '—'}</div>
@@ -184,30 +203,27 @@ async function init() {
   }
 }
 
-// File upload
-document.getElementById('file-input').addEventListener('change', function() {
-  const file = this.files[0];
-  if (!file) return;
-  document.getElementById('file-name').textContent = file.name;
-  document.getElementById('file-preview').style.display = 'flex';
-  const reader = new FileReader();
-  reader.onload = e => {
-    fileData = { base64: e.target.result.split(',')[1], nombre: file.name };
-  };
-  reader.readAsDataURL(file);
-});
+function setupFileInput(inputId, previewId, nombreId, storageKey) {
+  document.getElementById(inputId).addEventListener('change', function() {
+    const file = this.files[0];
+    if (!file) return;
+    document.getElementById(nombreId).textContent = file.name;
+    document.getElementById(previewId).style.display = 'flex';
+    const reader = new FileReader();
+    reader.onload = e => {
+      if (storageKey === 'prop') filePropietario = { base64: e.target.result.split(',')[1], nombre: file.name };
+      else fileHonorarios = { base64: e.target.result.split(',')[1], nombre: file.name };
+    };
+    reader.readAsDataURL(file);
+  });
+}
 
-const ua = document.getElementById('upload-area');
-ua.addEventListener('dragover', e => { e.preventDefault(); ua.classList.add('dragover'); });
-ua.addEventListener('dragleave', () => ua.classList.remove('dragover'));
-ua.addEventListener('drop', e => {
-  e.preventDefault(); ua.classList.remove('dragover');
-  const file = e.dataTransfer.files[0];
-  if (file) { document.getElementById('file-input').files = e.dataTransfer.files; document.getElementById('file-input').dispatchEvent(new Event('change')); }
-});
+setupFileInput('file-propietario', 'preview-propietario', 'nombre-propietario', 'prop');
+setupFileInput('file-honorarios', 'preview-honorarios', 'nombre-honorarios', 'hon');
 
 async function enviarPago() {
-  const monto = document.getElementById('monto').value;
+  const montoProp = document.getElementById('monto-propietario').value;
+  const montoHon = document.getElementById('monto-honorarios').value;
   const fecha = document.getElementById('fecha').value;
   const btn = document.getElementById('btn-enviar');
   const errEl = document.getElementById('error-msg');
@@ -223,10 +239,12 @@ async function enviarPago() {
     const body = {
       alquiler_id: parseInt(alquilerId),
       periodo,
-      monto_cobrado: monto ? parseFloat(monto) : null,
+      monto_cobrado: montoProp ? parseFloat(montoProp) : null,
+      honorarios: montoHon ? parseFloat(montoHon) : null,
       fecha_pago: fecha || null,
       estado: 'pago-pendiente',
-      ...(fileData && { comprobante_base64: fileData.base64, comprobante_nombre: fileData.nombre })
+      ...(filePropietario && { comprobante_base64: filePropietario.base64, comprobante_nombre: filePropietario.nombre }),
+      ...(fileHonorarios && { comprobante_hon_base64: fileHonorarios.base64, comprobante_hon_nombre: fileHonorarios.nombre })
     };
 
     const res = await fetch('/api/registrar-pago', {
