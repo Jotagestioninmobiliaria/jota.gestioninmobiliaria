@@ -2642,10 +2642,10 @@ function abrirPago(id){
     desgloseHtml = `<div style="background:var(--bg);border-radius:8px;padding:12px 14px;margin-bottom:14px">
       <div style="font-size:11px;font-weight:500;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Desglose del detalle enviado</div>
       ${pago.honorarios > 0 ? `<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span style="color:var(--text-2)">Honorarios</span><span>-${fmtN(pago.honorarios)}</span></div>` : ''}
-      ${pago.expensas > 0 ? `<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span style="color:var(--text-2)">Expensas</span><span>-${fmtN(pago.expensas)}</span></div>` : ''}
       ${pago.api > 0 ? `<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span style="color:var(--text-2)">API</span><span>-${fmtN(pago.api)}</span></div>` : ''}
       ${pago.tgi > 0 ? `<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span style="color:var(--text-2)">TGI</span><span>-${fmtN(pago.tgi)}</span></div>` : ''}
       ${pago.total_duena > 0 ? `<div style="display:flex;justify-content:space-between;font-size:13px;font-weight:600;border-top:1px solid var(--border);padding-top:6px;margin-top:4px"><span>Total a la dueña</span><span style="color:var(--green)">${fmtN(pago.total_duena)}</span></div>` : ''}
+      ${pago.expensas > 0 ? `<div style="display:flex;justify-content:space-between;font-size:12px;margin-top:8px;padding-top:6px;border-top:1px solid var(--border)"><span style="color:var(--text-3)">Expensas ext. (pago en nombre del propietario)</span><span style="color:var(--text-3)">${fmtN(pago.expensas)}</span></div>` : ''}
     </div>`;
   }
 
