@@ -2216,6 +2216,7 @@ Titular de la cuenta: Juliana Rubio`;
     alquiler_id: a.id,
     periodo: gMesActual,
     estado: 'pago-pendiente',
+    monto_cobrado: Math.round(alqTotal),
     honorarios: honorarios,
     expensas: getDed('Expensas ext.'),
     api: getDed('API'),
