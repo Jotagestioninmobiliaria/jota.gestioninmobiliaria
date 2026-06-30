@@ -884,6 +884,7 @@ function renderGroups(list){
         const ib = PRIORITARIOS.findIndex(d => b.direccion.includes(d) || d.includes(b.direccion.trim()));
         return ia - ib;
       }) },
+    { key:"mono", icon:"🛏", label:"Monoambiente", items: list.filter(p => p.dormitorios === 0 && (p.tipo==="Departamento"||p.tipo==="Casa") && !isPriority(p)) },
     { key:"d1", icon:"🛏", label:"1 Dormitorio",  items: list.filter(p => p.dormitorios === 1 && (p.tipo==="Departamento"||p.tipo==="Casa") && !isPriority(p)) },
     { key:"d2", icon:"🛏", label:"2 Dormitorios", items: list.filter(p => p.dormitorios === 2 && (p.tipo==="Departamento"||p.tipo==="Casa") && !isPriority(p)) },
     { key:"d3", icon:"🛏", label:"3 Dormitorios", items: list.filter(p => p.dormitorios >= 3 && (p.tipo==="Departamento"||p.tipo==="Casa") && !isPriority(p)) },
