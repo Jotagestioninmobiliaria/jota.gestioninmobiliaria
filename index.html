@@ -225,6 +225,9 @@
       <div class="nav-item" id="nav-alquiladas" onclick="setView('alquiladas')">
         <span class="nav-icon">📋</span> Alquiladas
       </div>
+      <div class="nav-item" id="nav-alquileres2" onclick="setView('alquileres2')">
+        <span class="nav-icon">🗓</span> Alquileres
+      </div>
       <div class="nav-item" id="nav-gestion" onclick="setView('gestion')">
         <span class="nav-icon">🏠</span> Gestión Alq.
       </div>
@@ -716,6 +719,8 @@ function setView(v){
     loadResumen();
   } else if(v === "gestion"){
     loadGestion();
+  } else if(v === "alquileres2"){
+    loadAlquileres();
   } else if(v === "vendidas"){
     renderMain();
   } else {
@@ -2904,6 +2909,8 @@ function applyRole(user){
   if(user.rol === "ventas"){
     const navG = document.getElementById("nav-gestion");
     if(navG) navG.style.display = "none";
+    const navA2 = document.getElementById("nav-alquileres2");
+    if(navA2) navA2.style.display = "none";
   }
 }
 
@@ -2954,5 +2961,7 @@ if(_savedUser){
   } catch(e) { sessionStorage.removeItem("jota_user"); }
 }
 </script>
+<script src="alquileres.js"></script>
+<script src="importar-excel.js"></script>
 </body>
 </html>
