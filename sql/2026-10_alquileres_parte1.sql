@@ -51,3 +51,22 @@ create table if not exists ajustes_icl (
 -- Mismo acceso que el resto de las tablas que usa la app
 -- (la app usa la clave pública "anon"; si tus otras tablas tienen RLS
 --  desactivado, esta también queda así por defecto).
+
+-- ---------- keep alive (evita que Supabase pause el proyecto) ----------
+-- El workflow de GitHub "Supabase Keep Alive" llama a esta función todos los días.
+-- Hace una escritura real (no solo una lectura), que es lo que cuenta como actividad.
+create table if not exists keep_alive (
+  id          integer primary key,
+  ultimo_ping timestamptz not null default now(),
+  pings       bigint not null default 0
+);
+alter table keep_alive enable row level security;  -- sin políticas: solo se toca desde la función
+
+create or replace function keep_alive() returns timestamptz
+language sql security definer set search_path = public as $$
+  insert into keep_alive (id, ultimo_ping, pings) values (1, now(), 1)
+  on conflict (id) do update set ultimo_ping = now(), pings = keep_alive.pings + 1
+  returning ultimo_ping;
+$$;
+revoke all on function keep_alive() from public;
+grant execute on function keep_alive() to anon, authenticated;

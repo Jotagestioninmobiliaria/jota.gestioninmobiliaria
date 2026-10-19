@@ -17,16 +17,16 @@ const AX_COLS = {
 
 // Excel → columna de la base. Las fechas se escriben con el mismo formato que ya usa la base.
 const AX_CAMPOS = [
-  ['propietario','propietario'], ['inquilino','inquilino'], ['cobra','cobra'], ['edificio','edificio'], ['tipo_unidad','tipo_unidad'],
+  ['propietario','propietario'], ['inquilino','inquilino'], ['cobra','cobra'], ['edificio','edificio'], ['tipo_unidad','tipo'],
   ['inicio','inicio_contrato'], ['fin','fin_contrato'], ['tipo_contrato','tipo_contrato'], ['periodicidad','periodicidad_meses'],
   ['mes_aumento','mes_aumento'], ['alq_inicial','alq_inicial'], ['alq_actual','alq_actual'], ['alq_usd','alq_actual_usd'], ['moneda','moneda'],
-  ['comision_pct','comision_pct'], ['comision','comision_adm'], ['expensas','expensas_monto'],
+  ['comision_pct','comision_pct'], ['comision_r','comision_db'], ['comision_s','comision_adm'], ['expensas','expensas_monto'],
   ['tel_inquilino','tel_inquilino'], ['email_inquilino','email_inquilino'], ['adm_email','adm_contacto'], ['adm_telefono','tel_adm'],
   ['seguro','seguro'], ['tgi_cuenta','tgi_cuenta'], ['tgi_gestion','tgi_gestion'], ['api','api'], ['aguas','aguas'],
   ['gas_cliente','gas_cliente'], ['gas_persona','gas_persona'], ['epe_cliente','epe_cliente'], ['epe_plan','epe_plan'],
   ['ultimo_ajuste','fecha_ultimo_ajuste'],
 ];
-const AX_NUMERICOS = new Set(['alq_inicial','alq_actual','alq_actual_usd','comision_pct','comision_adm','expensas_monto','periodicidad_meses']);
+const AX_NUMERICOS = new Set(['alq_inicial','alq_actual','alq_actual_usd','comision_pct','comision_adm','comision_db','expensas_monto','periodicidad_meses']);
 
 function axCelda(v){
   if(v === null || v === undefined) return null;
@@ -81,7 +81,7 @@ function axLeerHoja(ws){
       alq_inicial: axNum(g('alq_inicial')), alq_actual: alq, alq_usd: usd,
       moneda: (usd > 0 && !(alq > 0)) ? 'USD' : 'ARS',
       comision_pct: pct !== null && pct > 0 && pct < 1 ? pct : null,
-      comision: axNum(g('comision_r')) || axNum(g('comision_s')),
+      comision_r: axNum(g('comision_r')), comision_s: axNum(g('comision_s')),
       expensas: axNum(g('expensas')),
       tel_inquilino: axCelda(g('tel_inquilino')), email_inquilino: axCelda(g('email_inquilino')),
       adm_email: axCelda(g('adm_email')), adm_telefono: axCelda(g('adm_telefono')), seguro: axCelda(g('seguro')),
@@ -102,6 +102,7 @@ const AX_CORRECCIONES = [
     set: { tipo_contrato: 'TRIMESTRAL', periodicidad: 3, mes_aumento: 'JULIO-OCTUBRE-ENERO-ABRIL' }, sinAumentosIncluidos: true },
   { edificio: 'ITUZAINGO 654', unidad: '2-1', nota: 'Contrato renovado con el mismo inquilino: 09/08/2026 al 08/08/2028',
     set: { inicio: '2026-08-09', fin: '2028-08-08', alq_inicial: 533533 } },
+  { edificio: 'BELGRANO 766', unidad: 'P6', nota: 'Alquiler actual $1.050.000 (igual al inicial)', set: { alq_actual: 1050000 } },
   { edificio: 'BALCARCE 45 BIS', unidad: '2-A', nota: 'El contrato vence el 31/10/2026', set: { fin: '2026-10-31' } },
   { edificio: 'ITUZAINGO 654', unidad: '7-1 + EE 29', nota: 'Propietario DB+GB', set: { propietario: 'DB+GB' } },
   { edificio: 'AMENABAR 1941', unidad: null, nota: 'En venta: no se importa', omitir: true },
@@ -116,7 +117,10 @@ function axAplicarCorrecciones(filas){
       if(c.set) Object.assign(f, c.set);
       if(c.omitir) f.omitir = true;
       if(c.sinAumentosIncluidos) f.sinAumentosIncluidos = true;
-      if(c.padre){ const p = filas.find(x => igual(x, f.edificio, c.padre)); if(p) f.padreFila = p.fila; }
+      if(c.padre){
+        const p = filas.find(x => igual(x, f.edificio, c.padre));
+        if(p){ f.padreFila = p.fila; f.inquilino = f.inquilino || p.inquilino; f.alq_actual = 0; f.vaciar = true; }
+      }
       f.correccion = c.nota;
     });
   });
@@ -130,25 +134,37 @@ function axComoAlquiler(f){
 }
 
 // ---------- emparejar filas del Excel con la base ----------
+// Palabras normalizadas: "ITUZANGO 654 -SS EE 04" → ITUZAINGO 654 SS EE 4 (sin ceros a la izquierda)
+const AX_RUIDO = new Set(['PISO','DPTO','DTO','DE','DEL','LA','EL']);
+function axTokens(s){
+  return axNorm(s).replace(/ITUZANGO/g, 'ITUZAINGO').replace(/([A-Z])(\d)/g, '$1 $2').replace(/(\d)([A-Z])/g, '$1 $2')
+    .split(/[^A-Z0-9]+/).filter(Boolean).map(t => /^\d+$/.test(t) ? String(Number(t)) : t).filter(t => !AX_RUIDO.has(t));
+}
 function axPuntaje(f, a){
-  const dbUni = axCompact(a.unidad), dbTodo = axCompact(`${a.edificio || ''} ${a.direccion || ''} ${a.unidad || ''}`);
-  const u = axCompact(f.unidad), tu = axCompact(`${f.tipo_unidad || ''} ${f.unidad || ''}`);
-  const nro = (f.edificio || '').match(/\d+/g)?.join('') || '';
-  const nombreEd = axCompact((f.edificio || '').replace(/\d+/g, '')).slice(0, 6);
-  let ed = 0, un = 0, inq = 0;
-  if(nro && dbTodo.includes(nro)) ed = 2; else if(nombreEd && dbTodo.includes(nombreEd)) ed = 1;
-  const variantes = [u, tu, axCompact(`${f.edificio} ${f.unidad}`), axCompact(`${f.edificio} ${f.tipo_unidad} ${f.unidad}`)].filter(Boolean);
-  if(variantes.includes(dbUni)) un = 3;
-  else if(u.length >= 2 && variantes.some(v => dbUni.endsWith(v) && !/\d/.test(dbUni[dbUni.length - v.length - 1] || ''))) un = 2;
-  const pal = s => axNorm(s).split(' ').filter(w => w.length >= 4);
-  if(f.inquilino && a.inquilino && pal(f.inquilino).some(w => pal(a.inquilino).includes(w))) inq = 2;
-  if(!ed || (!un && !inq)) return 0;
+  const B = axTokens(f.edificio), U = axTokens(f.unidad), D = axTokens(a.unidad);
+  const T = axTokens(f.tipo_unidad).filter(t => t === 'BAULERA' || t === 'BICICLETERO');
+  const nombre = B.filter(t => !/^\d+$/.test(t)), nums = B.filter(t => /^\d+$/.test(t));
+  if(!nombre.length || !nombre.every(t => D.includes(t))) return 0; // tiene que ser el mismo edificio
+  let ed = 2;
+  if(nums.length) ed += nums.every(t => D.includes(t)) ? 2 : -1;      // 652 vs 654: penaliza pero no descarta
+  const resto = D.filter(t => !B.includes(t) && !(nums.length === 0 && /^\d{3,}$/.test(t) && !U.includes(t)));
+  const igual = (x, y) => x.length === y.length && x.every(t => y.includes(t));
+  let un = 0;
+  const propio = U.length && !igual(U, B);
+  if(!propio && resto.length === 0) un = 4;                            // la unidad es el edificio entero (oficina, local)
+  else if(propio && (igual(resto, U) || igual(resto, [...T, ...U]))) un = 4;
+  else if(propio && U.every(t => resto.includes(t))) un = 2;            // "7-3" ↔ "7-3 + EE 35"
+  else if(propio && resto.length && resto.some(t => /\d/.test(t)) && resto.every(t => U.includes(t))) un = 1; // "1-A + EE04" ↔ "1-A"
+  const inqE = axCompact(f.inquilino), inqD = axCompact(a.inquilino);
+  const pal = x => axNorm(x).split(' ').filter(w => w.length >= 4);
+  const inq = inqE && inqE === inqD ? 3 : (f.inquilino && a.inquilino && pal(f.inquilino).some(w => pal(a.inquilino).includes(w)) ? 1 : 0);
+  if(!un && inq < 3) return 0;
   return ed + un + inq;
 }
 
 function axEmparejar(filas, alqs){
   const pares = [];
-  filas.forEach(f => alqs.forEach(a => { const s = axPuntaje(f, a); if(s >= 4) pares.push({ f, a, s }); }));
+  filas.forEach(f => alqs.forEach(a => { const s = axPuntaje(f, a); if(s >= 3) pares.push({ f, a, s }); }));
   pares.sort((x, y) => y.s - x.s);
   const usadosF = new Set(), usadosA = new Set(), match = {};
   pares.forEach(({ f, a, s }) => {
@@ -166,6 +182,20 @@ function axIgual(campo, antes, despues){
     if(a && b) return a.getTime() === b.getTime();
   }
   return axNorm(antes) === axNorm(despues);
+}
+
+// Busca el propietario existente: 1) unidades de la base con ese mismo nombre ya vinculadas,
+// 2) mismo nombre, 3) mismas palabras en otro orden o con segundo nombre ("Musto Damian" = "Damián Musto")
+function axResolverProp(nombre, props, alqs){
+  const n = axNorm(nombre);
+  const porUnidad = alqs.find(a => axNorm(a.propietario) === n && a.propietario_id && props.some(p => p.id === a.propietario_id));
+  if(porUnidad) return porUnidad.propietario_id;
+  const exacto = props.find(p => axNorm(p.nombre) === n);
+  if(exacto) return exacto.id;
+  const pal = x => axNorm(x).split(' ').filter(w => w.length >= 3);
+  const w = pal(nombre);
+  const parecido = props.filter(p => { const q = pal(p.nombre); return w.length >= 2 && w.every(t => q.includes(t)); });
+  return parecido.length === 1 ? parecido[0].id : null;
 }
 
 function axFormatoFecha(alqs){
@@ -253,7 +283,7 @@ async function axLeerArchivo(file){
       f.puntaje = match[f.fila]?.puntaje ?? 0;
     });
     const nombresProp = [...new Set(filas.map(f => f.propietario).filter(Boolean))];
-    const nuevosProps = nombresProp.filter(n => !props.some(p => axNorm(p.nombre) === axNorm(n)));
+    const nuevosProps = nombresProp.filter(n => !axResolverProp(n, props, alqs));
     // Mes del Excel: se toma del nombre del archivo (ej. "OCTUBRE ALQUILERES.xlsx"); se puede cambiar en pantalla
     const [hm, hy] = axHoyPeriodo().split('-').map(Number);
     const nombreN = axNorm(file.name);
@@ -408,7 +438,7 @@ async function axAplicarImport(){
     if(error) escribir(`❌ Propietario ${axH(nombre)}: ${axH(error.message)}`, true);
     else { props.push(data); escribir(`✓ Propietario creado: ${axH(nombre)}`); }
   }
-  const idProp = n => props.find(p => axNorm(p.nombre) === axNorm(n))?.id ?? null;
+  const idProp = n => axResolverProp(n, props, axImp.alqs);
   const tieneDireccion = axImp.alqs.some(a => 'direccion' in a);
   let ok = 0, err = 0;
   const idPorFila = Object.fromEntries(axImp.filas.filter(f => f.matchId).map(f => [f.fila, f.matchId]));

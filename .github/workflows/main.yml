@@ -1,16 +1,57 @@
 name: Supabase Keep Alive
 
+# Supabase pausa los proyectos gratuitos después de 7 días sin actividad.
+# Una lectura cada 2 días no alcanzó (se pausó igual en julio y en septiembre),
+# así que ahora se corre todos los días y además se hace una escritura real
+# en la base (función keep_alive, ver sql/2026-10_alquileres_parte1.sql).
+
 on:
   schedule:
-    - cron: '0 12 */2 * *'
+    - cron: '17 11 * * *'   # todos los días, 08:17 de Argentina
   workflow_dispatch:
 
 jobs:
   keep-alive:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      SUPABASE_URL: https://ombrbobzmiedicapfmqw.supabase.co
+      KEY: ${{ secrets.SUPABASE_ANON_KEY }}
     steps:
-      - name: Ping Supabase
+      - name: Ping a Supabase (escritura + lectura)
         run: |
-          curl -sS --fail-with-body "https://ombrbobzmiedicapfmqw.supabase.co/rest/v1/propiedades?select=id&limit=1" \
-            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
-            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}"
+          set -u
+          if [ -z "$KEY" ]; then
+            echo "::error title=Falta la clave::No está cargado el secreto SUPABASE_ANON_KEY en GitHub (Settings → Secrets and variables → Actions)."
+            exit 1
+          fi
+
+          # 1) Escritura: registra el ping en la tabla keep_alive
+          ok=0
+          for intento in 1 2 3; do
+            rc=0
+            code=$(curl -sS -o resp.txt -w '%{http_code}' -X POST "$SUPABASE_URL/rest/v1/rpc/keep_alive" \
+              -H "apikey: $KEY" -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d '{}') || rc=$?
+            # Un proyecto pausado deja de existir en internet: el nombre no resuelve (curl sale con 6).
+            if [ "$rc" = 6 ]; then
+              echo "::error title=Supabase está PAUSADO::Entrá a supabase.com, abrí el proyecto y tocá 'Restore project'. Después corré este workflow a mano (Actions → Supabase Keep Alive → Run workflow)."
+              exit 1
+            fi
+            if [ "$code" = 200 ]; then echo "Escritura OK: $(cat resp.txt)"; ok=1; break; fi
+            if [ "$code" = 404 ]; then
+              echo "::warning title=Falta la función keep_alive::Corré sql/2026-10_alquileres_parte1.sql en Supabase. Mientras tanto solo se hace la lectura."
+              ok=1; break
+            fi
+            echo "Intento $intento: HTTP $code $(cat resp.txt)"; sleep 20
+          done
+
+          # 2) Lectura de una tabla real
+          curl -sS --fail-with-body --retry 3 --retry-delay 20 \
+            "$SUPABASE_URL/rest/v1/alquileres?select=id&limit=1" \
+            -H "apikey: $KEY" -H "Authorization: Bearer $KEY"
+          echo
+
+          if [ "$ok" != 1 ]; then
+            echo "::error title=Supabase no respondió::La escritura falló 3 veces. Revisá el estado del proyecto en supabase.com."
+            exit 1
+          fi

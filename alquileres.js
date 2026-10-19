@@ -154,10 +154,12 @@ function axCalculoMes(a){
     ],
   };
 }
+// La comisión fija está en comision_db (unidades DB/GB) o en comision_adm (el resto)
+function axCampoComision(a){ return a.comision_db !== null && a.comision_db !== undefined && !(Number(a.comision_adm) > 0) ? 'comision_db' : 'comision_adm'; }
 function axHonorarios(a, total){
   const pct = Number(a.comision_pct);
   if(pct > 0 && pct < 1) return Math.round(total * pct);
-  return Math.round(Number(a.comision_adm) || 0);
+  return Math.round(Number(a[axCampoComision(a)]) || 0);
 }
 
 function axWAPhone(t){
@@ -409,7 +411,7 @@ function renderAlquileres(){
     <div id="ax-lista">${axRenderGrupos(ordenGrupos, grupos)}</div>
     ${vacantes.length ? `<details style="margin-top:20px"><summary style="cursor:pointer;font-size:13px;color:var(--text-2)">Vacantes / sin importe (${vacantes.length})</summary>
       <div class="table-wrap" style="margin-top:8px"><table><tbody>
-        ${vacantes.map(a => `<tr><td>${axH(axNombreUnidad(a))}</td><td style="color:var(--text-3)">${axH(a.tipo_unidad || '')}</td><td>${axH(a.propietario || '—')}</td><td style="color:var(--text-3)">${axH(a.inquilino || 'Sin inquilino')}</td></tr>`).join('')}
+        ${vacantes.map(a => `<tr><td>${axH(axNombreUnidad(a))}</td><td style="color:var(--text-3)">${axH(a.tipo_unidad || a.tipo || '')}</td><td>${axH(a.propietario || '—')}</td><td style="color:var(--text-3)">${axH(a.inquilino || 'Sin inquilino')}</td></tr>`).join('')}
       </tbody></table></div></details>` : ''}`;
 }
 
@@ -726,7 +728,7 @@ async function axConfirmarICL(ids){
     if(e1){ showToast('Error: ' + e1.message); continue; }
     const pct = Number(a.comision_pct);
     const upd = { alq_anterior: c.anterior, alq_actual: c.nuevo, fecha_ultimo_ajuste: axISO(c.au.fechaAjuste),
-                  ...(pct > 0 && pct < 1 ? { comision_adm: Math.round(c.nuevo * pct) } : {}) };
+                  ...(pct > 0 && pct < 1 ? { [axCampoComision(a)]: Math.round(c.nuevo * pct) } : {}) };
     const { error: e2 } = await db.from('alquileres').update(upd).eq('id', a.id);
     if(e2){ showToast('Error: ' + e2.message); continue; }
     Object.assign(a, upd);
@@ -749,7 +751,7 @@ async function axDeshacerICL(id){
   if(!a || !aj) return;
   if(!confirm(`¿Deshacer el aumento de ${axNombreUnidad(a)}?\nEl alquiler vuelve a ${axPesos(aj.importe_anterior)}.`)) return;
   const pct = Number(a.comision_pct);
-  const upd = { alq_actual: Number(aj.importe_anterior), ...(pct > 0 && pct < 1 ? { comision_adm: Math.round(aj.importe_anterior * pct) } : {}) };
+  const upd = { alq_actual: Number(aj.importe_anterior), ...(pct > 0 && pct < 1 ? { [axCampoComision(a)]: Math.round(aj.importe_anterior * pct) } : {}) };
   const { error } = await db.from('alquileres').update(upd).eq('id', id);
   if(error){ showToast('Error: ' + error.message); return; }
   await db.from('ajustes_icl').delete().eq('id', aj.id);
@@ -819,7 +821,7 @@ async function axGuardarUnidad(id){
   if(upd.tipo_contrato !== undefined) upd.periodicidad_meses = { TRIMESTRAL: 3, CUATRIMESTRAL: 4, SEMESTRAL: 6 }[upd.tipo_contrato] || null;
   if(upd.comision_pct !== undefined || upd.alq_actual !== undefined){
     const pct = upd.comision_pct ?? a.comision_pct, alq = upd.alq_actual ?? a.alq_actual;
-    upd.comision_adm = pct > 0 && pct < 1 ? Math.round(alq * pct) : null;
+    upd[axCampoComision(a)] = pct > 0 && pct < 1 ? Math.round(alq * pct) : null;
   }
   if(Object.keys(upd).length === 0){ document.getElementById('ax-modal')?.remove(); return; }
   const { error } = await db.from('alquileres').update(upd).eq('id', id);
