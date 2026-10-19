@@ -95,6 +95,19 @@ function axAumento(a, periodo){
   return { porCalendario, porTexto, diferencia: porCalendario !== porTexto, fechaAjuste, fechaBase, per, yaIncluido, atrasado };
 }
 
+// Regla de cobro: si el aumento rige del 1 al 10 se cobra ese mes (proporcional);
+// si rige después del 10, ese mes se cobra el importe anterior y el mes siguiente
+// el importe nuevo + la diferencia de los días del mes anterior.
+const AX_DIA_LIMITE = 10;
+function axPeriodoAnterior(p){ const [m, y] = p.split('-').map(Number); return m === 1 ? `12-${y - 1}` : `${String(m - 1).padStart(2,'0')}-${y}`; }
+function axAumentoCobro(a, periodo){
+  const prev = axAumento(a, axPeriodoAnterior(periodo));
+  if(prev && prev.fechaAjuste && prev.fechaAjuste.getDate() > AX_DIA_LIMITE) return { ...prev, diferenciaMesAnterior: true };
+  const au = axAumento(a, periodo);
+  if(au && au.fechaAjuste && au.fechaAjuste.getDate() > AX_DIA_LIMITE) return { ...au, cobroSiguiente: true };
+  return au;
+}
+
 function axAjusteDe(id){ return axAjustes.find(x => x.alquiler_id === id && x.periodo === axPeriodo); }
 function axPagoDe(id){ return axPagos.find(x => x.alquiler_id === id); }
 function axPropDe(a){
@@ -118,6 +131,15 @@ function axCalculoMes(a){
   const fa = axParseFecha(aj.fecha_ajuste);
   const [m, y] = axPeriodo.split('-').map(Number);
   const dm = axDiasMes(y, m);
+  const ant = Number(aj.importe_anterior), nue = Number(aj.importe_nuevo);
+  // Aumento del mes anterior (después del 10): importe nuevo + diferencia de esos días
+  if(fa && (fa.getMonth() + 1 !== m || fa.getFullYear() !== y)){
+    const dmA = axDiasMes(fa.getFullYear(), fa.getMonth() + 1);
+    const dias = dmA - fa.getDate() + 1;
+    const diario = (nue - ant) / dmA;
+    const monto = Math.round(diario * dias);
+    return { total: nue + monto, usd, lineas: null, aj, diasAnt: 0, diferencia: { dias, diario, monto, desde: fa } };
+  }
   const diasAnt = fa ? fa.getDate() - 1 : 0;
   const partido = diasAnt > 0 && axPartido[a.id] !== false;
   if(!partido) return { total: Number(aj.importe_nuevo), usd, lineas: null, aj, diasAnt };
@@ -165,7 +187,12 @@ function axLineasUnidad(a, conNombre){
   let txt = '';
   if(c.aj && conNombre) titulo += ` (actualización por ICL: de ${axMonto(c.aj.importe_anterior, usd)} a ${axMonto(c.aj.importe_nuevo, usd)})`;
   else if(c.aj) txt += `Este mes se aplica la actualización por ICL: el alquiler pasa de ${axMonto(c.aj.importe_anterior, usd)} a ${axMonto(c.aj.importe_nuevo, usd)}.\n\n`;
-  if(c.lineas){
+  if(c.diferencia){
+    const d = c.diferencia;
+    txt += `${titulo}${conNombre ? ':' : ''} ${axMonto(c.aj.importe_nuevo, usd)}.-\n`;
+    txt += `Diferencia por el aumento desde el ${axFmtFecha(d.desde)} (${d.dias} días x ${axMonto(d.diario, usd)}): ${axMonto(d.monto, usd)}.-\n`;
+    txt += `Total ${axMonto(c.total, usd)}.-\n`;
+  } else if(c.lineas){
     txt += `${titulo}:\n`;
     c.lineas.forEach(l => { txt += `  ${l.dias} días x ${axMonto(l.diario, usd)} = ${axMonto(l.subtotal, usd)}\n`; });
     txt += `  Total ${axMonto(c.total, usd)}.-\n`;
@@ -254,7 +281,7 @@ async function axGenerarMes(){
 }
 
 async function axCargarICL(){
-  const pend = axAlq.filter(a => axActiva(a)).map(a => axAumento(a, axPeriodo)).filter(x => x && x.fechaBase);
+  const pend = axAlq.filter(a => axActiva(a)).map(a => axAumentoCobro(a, axPeriodo)).filter(x => x && x.fechaBase && !x.cobroSiguiente);
   if(pend.length === 0 || axICLCargando) return;
   const desde = new Date(Math.min(...pend.map(x => x.fechaBase))); desde.setDate(desde.getDate() - 15);
   const hasta = new Date(Math.max(...pend.map(x => x.fechaAjuste)));
@@ -282,10 +309,11 @@ function axICLEn(fecha){
 }
 
 function axCalculoICL(a){
-  const au = axAumento(a, axPeriodo);
+  const au = axAumentoCobro(a, axPeriodo);
   if(!au) return null;
   const aj = axAjusteDe(a.id);
   if(aj) return { au, aj, confirmado: true };
+  if(au.cobroSiguiente && !au.yaIncluido) return { au, info: `Rige el ${axFmtFecha(au.fechaAjuste)} (después del día ${AX_DIA_LIMITE}): este mes se cobra el importe actual; el aumento y la diferencia se calculan el mes que viene` };
   if(au.yaIncluido) return { au, incluido: true };
   if(au.soloTexto) return { au, error: 'MES AUMENTO dice este mes, pero por la fecha de inicio no corresponde: revisá el contrato' };
   if(au.sinFechas) return { au, error: 'Falta fecha de inicio o tipo de contrato' };
@@ -325,7 +353,7 @@ function axFiltrar(lista){
     if(q && !axNorm(`${a.unidad} ${axEdificio(a)} ${a.inquilino} ${a.propietario} ${a.cobra}`).includes(q)) return false;
     if(axFiltroEtapa === 'sin_tel'){ if(axTelGrupo(a)) return false; }
     else if(axFiltroEtapa && axEtapa(axPagoDe(a.id)) !== axFiltroEtapa) return false;
-    if(axSoloAumento && !axAumento(a, axPeriodo)) return false;
+    if(axSoloAumento && !axAumentoCobro(a, axPeriodo)) return false;
     return true;
   });
 }
@@ -341,7 +369,7 @@ function renderAlquileres(){
   const ordenGrupos = Object.keys(grupos).sort((x, y) => x === 'Sin propietario' ? 1 : y === 'Sin propietario' ? -1 : x.localeCompare(y, 'es'));
 
   const cuenta = tab => axUnidadesTab(tab).filter(axActiva).length;
-  const conAumento = activasTab.filter(a => axAumento(a, axPeriodo));
+  const conAumento = activasTab.filter(a => axAumentoCobro(a, axPeriodo));
   const chip = (val, label, n) => `<button class="btn-sm" onclick="axFiltroEtapa='${val}';renderAlquileres()" style="${axFiltroEtapa === val ? 'background:var(--text);color:white;border-color:var(--text)' : ''}">${label}${n !== undefined ? ` · ${n}` : ''}</button>`;
   const sinTel = activasTab.filter(a => !axTelGrupo(a)).length;
 
@@ -421,15 +449,24 @@ function axRenderGrupos(orden, grupos){
   }).join('');
 }
 
+// Aviso de contrato vencido o por vencer (60 días)
+function axVence(a){
+  const fin = axParseFecha(a.fin_contrato); if(!fin) return '';
+  const dias = Math.round((fin - new Date()) / 864e5);
+  if(dias < 0) return ` <span title="Contrato vencido el ${axFmtFecha(fin)}" style="font-size:11px;color:var(--red)">⏳ vencido</span>`;
+  if(dias <= 60) return ` <span title="Contrato vence el ${axFmtFecha(fin)}" style="font-size:11px;color:var(--orange)">⏳ vence ${axFmtFecha(fin)}</span>`;
+  return '';
+}
+
 function axRenderFila(a){
   const p = axPagoDe(a.id), e = axEtapa(p), et = AX_ETAPAS[e] || AX_ETAPAS.sin_avisar;
-  const c = axCalculoMes(a), au = axAumento(a, axPeriodo);
+  const c = axCalculoMes(a), au = axAumentoCobro(a, axPeriodo);
   const tel = axTelGrupo(a);
   const abierta = axOpen === a.id;
-  const aumentoIcon = au && !au.soloTexto ? (c.aj || au.yaIncluido ? ' <span title="Aumento ICL aplicado" style="color:var(--green)">⬆</span>' : ' <span title="Le toca aumento: revisalo arriba" style="color:var(--accent)">⬆</span>') : '';
+  const aumentoIcon = au && au.cobroSiguiente && !au.yaIncluido ? ` <span title="Aumento el ${axFmtFecha(au.fechaAjuste)}: se cobra con diferencia el mes que viene" style="color:var(--text-3)">⬆</span>` : au && !au.soloTexto ? (c.aj || au.yaIncluido ? ' <span title="Aumento ICL aplicado" style="color:var(--green)">⬆</span>' : ' <span title="Le toca aumento: revisalo arriba" style="color:var(--accent)">⬆</span>') : '';
   const comp = p?.comprobante_url ? ` <a href="${axH(p.comprobante_url)}" target="_blank" onclick="event.stopPropagation()" title="El inquilino subió comprobante">📎</a>` : '';
   return `<tr id="ax-row-${a.id}" data-ax="${a.id}" tabindex="0" onclick="axToggle(${a.id})" style="background:${et.bg}">
-      <td style="background:${et.bg}" title="${axH(axNombreUnidad(a))}"><b style="font-weight:500">${axH(axNombreUnidad(a))}</b>${aumentoIcon}</td>
+      <td style="background:${et.bg}" title="${axH(axNombreUnidad(a))}"><b style="font-weight:500">${axH(axNombreUnidad(a))}</b>${aumentoIcon}${axVence(a)}</td>
       <td style="background:${et.bg}" title="${axH(a.inquilino)}">${axH(a.inquilino)}${tel ? '' : ' <span title="Falta teléfono">📵</span>'}${axGrupoInquilino(a).length > 1 ? ` <span title="Un solo WhatsApp para sus ${axGrupoInquilino(a).length} unidades" style="font-size:11px;color:var(--blue)">👥${axGrupoInquilino(a).length}</span>` : ''}</td>
       <td style="background:${et.bg};font-size:11px;color:var(--text-2)" title="${axH(axTipoContrato(a))}">${axH(axTipoContrato(a) ? axTipoContrato(a).charAt(0) + axTipoContrato(a).slice(1).toLowerCase() : '—')}</td>
       <td style="background:${et.bg};font-weight:500">${axMonto(c.total, c.usd)}${comp}</td>
@@ -449,7 +486,7 @@ function axRenderDetalle(a){
   const p = axPagoDe(a.id), e = axEtapa(p), c = axCalculoMes(a), usd = c.usd;
   const tel = axWAPhone(a.tel_inquilino);
   const msg = axMsgEditado[a.id] ?? axMensaje(a);
-  const au = axAumento(a, axPeriodo);
+  const au = axAumentoCobro(a, axPeriodo);
   const honor = usd ? 0 : axHonorarios(a, c.total);
   const linea = (k, v) => `<div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;padding:3px 0"><span style="color:var(--text-3)">${k}</span><span style="text-align:right">${v}</span></div>`;
   return `<div style="display:grid;grid-template-columns:1fr 1.3fr;gap:20px">
@@ -458,6 +495,7 @@ function axRenderDetalle(a){
       ${c.aj ? linea('Aumento ICL', `${axMonto(c.aj.importe_anterior, usd)} → <b>${axMonto(c.aj.importe_nuevo, usd)}</b> (coef. ${Number(c.aj.coeficiente).toFixed(4)})`) : ''}
       ${au && !c.aj ? linea('Aumento', '<span style="color:var(--orange)">Le toca aumento y todavía no está confirmado</span>') : ''}
       ${c.aj && c.diasAnt > 0 ? `<label style="display:flex;gap:6px;align-items:center;font-size:12px;color:var(--text-2);margin:4px 0"><input type="checkbox" ${axPartido[a.id] !== false ? 'checked' : ''} onchange="axPartido[${a.id}]=this.checked;delete axMsgEditado[${a.id}];renderAlquileres()"> Mes partido (rige desde el día ${c.diasAnt + 1})</label>` : ''}
+      ${c.diferencia ? linea(`Diferencia desde ${axFmtFecha(c.diferencia.desde)} (${c.diferencia.dias} días)`, axMonto(c.diferencia.monto, usd)) : ''}
       ${c.lineas ? c.lineas.map(l => linea(`${l.dias} días x ${axMonto(l.diario, usd)}`, axMonto(l.subtotal, usd))).join('') : ''}
       ${linea('Total alquiler', `<b>${axMonto(c.total, usd)}</b>`)}
       ${honor ? linea('Honorarios MAO', axPesos(honor)) : ''}
@@ -499,14 +537,17 @@ function axRenderDetalle(a){
 function axRenderICL(conAumento){
   if(conAumento.length === 0) return '';
   const filas = conAumento.map(a => ({ a, c: axCalculoICL(a) }));
-  const pendientes = filas.filter(f => !f.c.confirmado && !f.c.error);
+  const pendientes = filas.filter(f => !f.c.confirmado && !f.c.error && !f.c.info && !f.c.incluido);
   const confirmados = filas.filter(f => f.c.confirmado || f.c.incluido).length;
+  const proximos = filas.filter(f => f.c.info).length;
   const td = 'style="padding:8px 10px;font-size:12px"';
   const rows = filas.map(({ a, c }) => {
     const au = c.au;
     const aviso = au.diferencia ? `<div style="font-size:10px;color:var(--orange)">⚠ ${au.porCalendario ? 'Por fecha de inicio le toca, pero MES AUMENTO no lo dice' : 'MES AUMENTO lo dice, pero por fecha de inicio no le toca'}</div>` : '';
     let cols;
-    if(c.incluido){
+    if(c.info){
+      cols = `<td ${td}>rige ${axFmtFecha(au.fechaAjuste)}</td><td ${td} colspan="6" style="padding:8px 10px;font-size:12px;color:var(--text-3)">${axH(c.info)}</td>`;
+    } else if(c.incluido){
       cols = `<td ${td}>${axFmtFecha(au.fechaBase)} → ${axFmtFecha(au.fechaAjuste)}</td><td ${td} colspan="4" style="padding:8px 10px;font-size:12px;color:var(--text-3)">Ya incluido en el importe actual (cargado del Excel)</td>
         <td ${td}>${axPesos(axImporte(a))}</td><td ${td}><span class="badge" style="background:#D6EDC4;color:#3B6D11">✓ Incluido</span></td>`;
     } else if(c.confirmado){
@@ -528,11 +569,11 @@ function axRenderICL(conAumento){
   }).join('');
   return `<details ${pendientes.length || filas.some(f => f.c.error) ? 'open' : ''} style="background:#FFFDF5;border:1px solid var(--accent);border-radius:var(--radius);padding:12px 16px;margin-bottom:18px">
     <summary style="cursor:pointer;font-size:13px"><span style="color:var(--accent);font-weight:600">⬆ Aumentos ICL de ${axFmtPeriodo(axPeriodo)}</span>
-      <span style="color:var(--text-2);margin-left:8px">${filas.length} unidad${filas.length !== 1 ? 'es' : ''} · ${confirmados} aplicada${confirmados !== 1 ? 's' : ''}</span>
+      <span style="color:var(--text-2);margin-left:8px">${filas.length - proximos} a cobrar este mes · ${confirmados} aplicada${confirmados !== 1 ? 's' : ''}${proximos ? ` · ${proximos} rigen después del ${AX_DIA_LIMITE} (se cobran el mes que viene)` : ''}</span>
       ${axICLCargando ? '<span style="color:var(--text-3);margin-left:8px">consultando BCRA…</span>' : ''}
       ${axICLError ? `<span style="color:var(--red);margin-left:8px">No se pudo consultar el ICL del BCRA (${axH(axICLError)}). <a href="#" onclick="event.preventDefault();axICL=null;axCargarICL()">Reintentar</a></span>` : ''}
     </summary>
-    <div style="font-size:11px;color:var(--text-3);margin:8px 0">Fuente: ICL oficial del BCRA. Coeficiente = ICL del día en que rige el aumento ÷ ICL del inicio del período anterior. No se aplica a contratos FIJO, SIN CONTRATO ni en USD.</div>
+    <div style="font-size:11px;color:var(--text-3);margin:8px 0">Fuente: ICL oficial del BCRA. Coeficiente = ICL del día en que rige el aumento ÷ ICL del último aumento (o del inicio). Si rige del 1 al ${AX_DIA_LIMITE} se cobra proporcional este mes; si rige después del ${AX_DIA_LIMITE}, se cobra el mes siguiente con la diferencia. No se aplica a contratos FIJO, SIN CONTRATO ni en USD.</div>
     <div class="table-wrap"><table style="table-layout:auto">
       <thead><tr><th>Unidad</th><th>Período</th><th>ICL inicial</th><th>ICL final</th><th>Coeficiente</th><th>Anterior</th><th>Nuevo</th><th></th></tr></thead>
       <tbody>${rows}</tbody>

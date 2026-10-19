@@ -100,6 +100,9 @@ const AX_CORRECCIONES = [
     set: { inicio: '2026-09-16', fin: '2028-09-15', alq_inicial: 650000, alq_actual: 650000 } },
   { edificio: 'ITALIA 1275', unidad: '5-D', nota: 'Es trimestral: aumenta en julio, octubre, enero y abril. Nunca se aumentó, se recalcula desde el inicio',
     set: { tipo_contrato: 'TRIMESTRAL', periodicidad: 3, mes_aumento: 'JULIO-OCTUBRE-ENERO-ABRIL' }, sinAumentosIncluidos: true },
+  { edificio: 'ITUZAINGO 654', unidad: '2-1', nota: 'Contrato renovado con el mismo inquilino: 09/08/2026 al 08/08/2028',
+    set: { inicio: '2026-08-09', fin: '2028-08-08', alq_inicial: 533533 } },
+  { edificio: 'BALCARCE 45 BIS', unidad: '2-A', nota: 'El contrato vence el 31/10/2026', set: { fin: '2026-10-31' } },
   { edificio: 'ITUZAINGO 654', unidad: '7-1 + EE 29', nota: 'Propietario DB+GB', set: { propietario: 'DB+GB' } },
   { edificio: 'AMENABAR 1941', unidad: null, nota: 'En venta: no se importa', omitir: true },
   { edificio: 'FIHSERTON GOLF', unidad: 'EE 1', nota: 'Incluida en el alquiler del U2 P1-A', padre: 'U2 P1-A' },
@@ -123,7 +126,7 @@ function axAplicarCorrecciones(filas){
 function axComoAlquiler(f){
   return { id: -f.fila, propietario: f.propietario, inquilino: f.inquilino, unidad: f.unidad, edificio: f.edificio,
     tipo_contrato: f.tipo_contrato, periodicidad_meses: f.periodicidad, mes_aumento: f.mes_aumento, inicio_contrato: f.inicio,
-    alq_actual: f.alq_actual, alq_actual_usd: f.alq_usd, moneda: f.moneda };
+    alq_actual: f.alq_actual, alq_actual_usd: f.alq_usd, moneda: f.moneda, alq_inicial: f.alq_inicial, fecha_ultimo_ajuste: f.ultimo_ajuste };
 }
 
 // ---------- emparejar filas del Excel con la base ----------
@@ -179,13 +182,18 @@ function axEscribirFecha(iso, formato){
 // Cambios de una fila: solo campos con valor en el Excel. Lo vacío en el Excel NO borra lo de la base,
 // salvo inquilino/alquiler (unidad que quedó vacante), que se marca aparte y hay que tildar a mano.
 // Último aumento que ya está incluido en el "Alquiler actual" del Excel (el del mes del Excel o anterior)
+function axPeriodoSiguiente(p){ const [m, y] = p.split('-').map(Number); return m === 12 ? `01-${y + 1}` : `${String(m + 1).padStart(2,'0')}-${y}`; }
 function axUltimoAjuste(f, periodoExcel){
   const per = f.periodicidad, ini = axParseFecha(f.inicio);
   if(!per || !ini || ['FIJO','SIN CONTRATO'].includes(f.tipo_contrato) || f.moneda === 'USD') return null;
   const [m, y] = periodoExcel.split('-').map(Number);
   const diff = (y - ini.getFullYear()) * 12 + (m - 1 - ini.getMonth());
   if(diff < per) return null;
-  return axISO(axSumarMeses(ini, diff - (diff % per)));
+  let k = diff - (diff % per);
+  // Aumento del mismo mes del Excel después del día 10: todavía no está cobrado (va con diferencia el mes siguiente)
+  if(k === diff && ini.getDate() > AX_DIA_LIMITE) k -= per;
+  if(k < per) return null;
+  return axISO(axSumarMeses(ini, k));
 }
 
 function axCambios(f, a, formato){
@@ -284,7 +292,7 @@ function axRenderImport(){
   });
   const resFilas = Object.values(res).sort((a, b) => a.tab.localeCompare(b.tab) || a.prop.localeCompare(b.prop, 'es'));
   const vacantes = filas.filter(f => !f.omitir && !f.padreFila && !axActiva(axComoAlquiler(f)));
-  const aumentos = filas.map(f => ({ f, au: axAumento(axComoAlquiler(f), prox) })).filter(x => x.au && axActiva(axComoAlquiler(x.f)));
+  const aumentos = filas.filter(f => !f.omitir).map(f => ({ f, au: axAumentoCobro(axComoAlquiler(f), prox) })).filter(x => x.au && !x.au.soloTexto && !x.au.yaIncluido && axActiva(axComoAlquiler(x.f)));
   const sinProp = filas.filter(f => !f.propietario && !f.omitir);
   const corregidas = filas.filter(f => f.correccion);
 
@@ -332,7 +340,7 @@ function axRenderImport(){
       </tbody></table>`)}
 
     ${tabla(`3 · Aumentos ICL en ${axFmtPeriodo(prox)} (${aumentos.length})`, `<table style="table-layout:auto"><thead><tr><th>Unidad</th><th>Inquilino</th><th>Contrato</th><th>Rige desde</th><th>Alquiler actual</th><th>Nota</th></tr></thead><tbody>
-      ${aumentos.map(({ f, au }) => `<tr style="cursor:default"><td ${tdS}>${axH(f.edificio)} ${axH(f.unidad)}</td><td ${tdS}>${axH(f.inquilino)}</td><td ${tdS}>${axH(f.tipo_contrato)}</td><td ${tdS}>${au.fechaAjuste ? axFmtFecha(au.fechaAjuste) : '—'}</td><td ${tdS}>${axPesos(f.alq_actual)}</td><td ${tdS}>${au.diferencia ? '<span style="color:var(--orange)">⚠ no coincide con MES AUMENTO</span>' : ''}</td></tr>`).join('')}
+      ${aumentos.map(({ f, au }) => `<tr style="cursor:default"><td ${tdS}>${axH(f.edificio)} ${axH(f.unidad)}</td><td ${tdS}>${axH(f.inquilino)}</td><td ${tdS}>${axH(f.tipo_contrato)}</td><td ${tdS}>${au.fechaAjuste ? axFmtFecha(au.fechaAjuste) : '—'}</td><td ${tdS}>${axPesos(f.alq_actual)}</td><td ${tdS}>${au.cobroSiguiente ? `Después del ${AX_DIA_LIMITE}: se cobra con diferencia en ${axFmtPeriodo(axPeriodoSiguiente(prox))}` : au.diferenciaMesAnterior ? `Rigió en ${axFmtPeriodo(axImp.periodo)} después del ${AX_DIA_LIMITE}: se cobra ahora + diferencia` : 'Proporcional en el mes'}${au.diferencia ? '<br><span style="color:var(--orange)">⚠ no coincide con MES AUMENTO</span>' : ''}</td></tr>`).join('')}
       </tbody></table>`)}
 
     ${nuevosProps.length ? `<div style="background:var(--blue-bg);color:var(--blue);border-radius:var(--radius);padding:10px 14px;margin-bottom:16px;font-size:12px">
