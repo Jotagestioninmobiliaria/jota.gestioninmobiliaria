@@ -84,10 +84,15 @@ function axAumento(a, periodo){
   // Con fecha de inicio y periodicidad manda el calendario; si solo lo dice MES AUMENTO, se avisa pero no se calcula.
   if(!porCalendario) return { porCalendario, porTexto, diferencia: true, soloTexto: true, per };
   const fechaAjuste = axSumarMeses(ini, diff);
-  const fechaBase = axSumarMeses(ini, diff - per);
+  // ICL inicial = el del último aumento aplicado (o el inicio del contrato si nunca se aumentó).
+  // Normalmente es el período anterior; si hubo aumentos sin aplicar, el cálculo los recupera.
   const ult = axParseFecha(a.fecha_ultimo_ajuste);
   const yaIncluido = !!(ult && ult >= fechaAjuste);
-  return { porCalendario, porTexto, diferencia: porCalendario !== porTexto, fechaAjuste, fechaBase, per, yaIncluido };
+  let fechaBase = axSumarMeses(ini, diff - per), atrasado = false;
+  const nuncaAumentado = !ult && Number(a.alq_inicial) > 0 && Number(a.alq_inicial) === Number(a.alq_actual);
+  if(ult && ult < fechaBase){ fechaBase = ult; atrasado = true; }
+  else if(nuncaAumentado && ini < fechaBase){ fechaBase = ini; atrasado = true; }
+  return { porCalendario, porTexto, diferencia: porCalendario !== porTexto, fechaAjuste, fechaBase, per, yaIncluido, atrasado };
 }
 
 function axAjusteDe(id){ return axAjustes.find(x => x.alquiler_id === id && x.periodo === axPeriodo); }
@@ -144,41 +149,75 @@ function axWAPhone(t){
   return '549' + n;
 }
 
-function axMensaje(a){
+// Mismo inquilino = mismo teléfono o mismo nombre
+function axMismoInquilino(a, x){
+  const ta = axWAPhone(a.tel_inquilino), tx = axWAPhone(x.tel_inquilino);
+  return (ta && ta === tx) || (axCompact(a.inquilino) && axCompact(a.inquilino) === axCompact(x.inquilino));
+}
+function axGrupoInquilino(a){
+  return [a, ...axAlq.filter(x => x.id !== a.id && axActiva(x) && axMismoInquilino(a, x))];
+}
+function axTelGrupo(a){ for(const x of axGrupoInquilino(a)){ const t = axWAPhone(x.tel_inquilino); if(t) return t; } return ''; }
+
+function axLineasUnidad(a, conNombre){
   const c = axCalculoMes(a), mes = axFmtPeriodo(axPeriodo), usd = c.usd;
-  // Nombre completo: en la planilla a veces está "Apellido Nombre" y otras "Nombre Apellido"
-  const nombre = (a.inquilino || '').trim();
-  const prop = axPropDe(a);
-  let txt = `Hola ${nombre}, buen día! ¿Cómo estás?\nTe paso el detalle de ${mes} (${axNombreUnidad(a)}).\n\n`;
-  if(c.aj){
-    txt += `Este mes se aplica la actualización por ICL: el alquiler pasa de ${axMonto(c.aj.importe_anterior, usd)} a ${axMonto(c.aj.importe_nuevo, usd)}.\n\n`;
-  }
+  let titulo = conNombre ? axNombreUnidad(a) : `Alquiler ${mes}`;
+  let txt = '';
+  if(c.aj && conNombre) titulo += ` (actualización por ICL: de ${axMonto(c.aj.importe_anterior, usd)} a ${axMonto(c.aj.importe_nuevo, usd)})`;
+  else if(c.aj) txt += `Este mes se aplica la actualización por ICL: el alquiler pasa de ${axMonto(c.aj.importe_anterior, usd)} a ${axMonto(c.aj.importe_nuevo, usd)}.\n\n`;
   if(c.lineas){
-    txt += `Alquiler ${mes}:\n`;
+    txt += `${titulo}:\n`;
     c.lineas.forEach(l => { txt += `  ${l.dias} días x ${axMonto(l.diario, usd)} = ${axMonto(l.subtotal, usd)}\n`; });
     txt += `  Total ${axMonto(c.total, usd)}.-\n`;
   } else {
-    txt += `Alquiler ${mes} ${axMonto(c.total, usd)}.-\n`;
-  }
-  const honor = usd ? 0 : axHonorarios(a, c.total);
-  const tieneBanco = prop && (prop.cbu || prop.nro_cuenta || prop.alias_mao);
-  if(prop && prop.datos_pago_wa){
-    txt += `\nTOTAL a abonar ${axMonto(c.total, usd)}.-\n${prop.datos_pago_wa}`;
-  } else if(axTabDe(a) === 'prop' && honor > 0 && tieneBanco){
-    txt += `Se descuentan honorarios inmobiliarios ${axPesos(honor)}.- (descontados al propietario/a)\n\n`;
-    txt += `TOTAL a depositar a ${prop.titular || prop.nombre} ${axPesos(c.total - honor)}.-\n`;
-    txt += `Titular: ${prop.titular || prop.nombre}\n`;
-    if(prop.banco) txt += `Banco: ${prop.banco}\n`;
-    if(prop.nro_cuenta) txt += `N° de cuenta: ${prop.nro_cuenta}\n`;
-    if(prop.cbu) txt += `CBU: ${prop.cbu}\n`;
-    if(prop.alias_mao && !prop.cbu) txt += `Alias: ${prop.alias_mao}\n`;
-    txt += `\nTOTAL a depositar a MAO Propiedades ${axPesos(honor)}.- (honorarios inmobiliarios)\n${AX_MAO_PAGO}`;
-  } else if(axTabDe(a) === 'prop'){
-    txt += `\nTOTAL a abonar ${axMonto(c.total, usd)}.-\n${AX_MAO_PAGO}`;
-  } else {
-    txt += `\nTOTAL a abonar ${axMonto(c.total, usd)}.-\n[Completar datos de pago de ${a.propietario || 'propietario'}]`;
+    txt += `${titulo}${conNombre ? ':' : ''} ${axMonto(c.total, usd)}.-\n`;
   }
   return txt;
+}
+
+// Datos de pago de un grupo de unidades del mismo propietario
+function axBloquePago(unidades){
+  const a = unidades[0], prop = axPropDe(a);
+  const usd = axEsUSD(a);
+  const total = unidades.reduce((s, x) => s + axCalculoMes(x).total, 0);
+  const honor = usd ? 0 : unidades.reduce((s, x) => s + axHonorarios(x, axCalculoMes(x).total), 0);
+  const tieneBanco = prop && (prop.cbu || prop.nro_cuenta || prop.alias_mao);
+  const banco = () => {
+    let t = `Titular: ${prop.titular || prop.nombre}\n`;
+    if(prop.banco) t += `Banco: ${prop.banco}\n`;
+    if(prop.nro_cuenta) t += `N° de cuenta: ${prop.nro_cuenta}\n`;
+    if(prop.cbu) t += `CBU: ${prop.cbu}\n`;
+    if(prop.alias_mao && !prop.cbu) t += `Alias: ${prop.alias_mao}\n`;
+    return t;
+  };
+  if(prop && prop.datos_pago_wa) return `\nTOTAL a abonar ${axMonto(total, usd)}.-\n${prop.datos_pago_wa}\n`;
+  if(axTabDe(a) === 'prop' && tieneBanco && honor > 0){
+    return `Se descuentan honorarios inmobiliarios ${axPesos(honor)}.- (descontados al propietario/a)\n\n`
+      + `TOTAL a depositar a ${prop.titular || prop.nombre} ${axPesos(total - honor)}.-\n${banco()}`
+      + `\nTOTAL a depositar a MAO Propiedades ${axPesos(honor)}.- (honorarios inmobiliarios)\n${AX_MAO_PAGO}\n`;
+  }
+  if(axTabDe(a) === 'prop' && tieneBanco) return `\nTOTAL a depositar a ${prop.titular || prop.nombre} ${axMonto(total, usd)}.-\n${banco()}`;
+  if(axTabDe(a) === 'prop') return `\nTOTAL a abonar ${axMonto(total, usd)}.-\n${AX_MAO_PAGO}\n`;
+  return `\nTOTAL a abonar ${axMonto(total, usd)}.-\n[Completar datos de pago de ${a.propietario || 'propietario'}]\n`;
+}
+
+// Mensaje para el inquilino con TODAS sus unidades del mes, agrupadas por a quién se paga
+function axMensaje(a){
+  const grupo = axGrupoInquilino(a), mes = axFmtPeriodo(axPeriodo);
+  // Nombre completo: en la planilla a veces está "Apellido Nombre" y otras "Nombre Apellido"
+  const nombre = (a.inquilino || '').trim();
+  const bloques = {};
+  grupo.forEach(x => { const k = axNorm(x.propietario) + '|' + (axEsUSD(x) ? 'USD' : 'ARS'); (bloques[k] = bloques[k] || []).push(x); });
+  const lista = Object.values(bloques);
+  if(grupo.length === 1){
+    return `Hola ${nombre}, buen día! ¿Cómo estás?\nTe paso el detalle de ${mes} (${axNombreUnidad(a)}).\n\n`
+      + axLineasUnidad(a, false) + axBloquePago(grupo).replace(/\n$/, '');
+  }
+  let txt = `Hola ${nombre}, buen día! ¿Cómo estás?\nTe paso el detalle de ${mes}.\n`;
+  lista.forEach((us, i) => {
+    txt += (i > 0 ? '\n———\n' : '\n') + us.map(x => axLineasUnidad(x, true)).join('') + axBloquePago(us);
+  });
+  return txt.replace(/\n$/, '');
 }
 
 // ---------- carga de datos ----------
@@ -284,7 +323,7 @@ function axFiltrar(lista){
   const q = axNorm(axBusqueda);
   return lista.filter(a => {
     if(q && !axNorm(`${a.unidad} ${axEdificio(a)} ${a.inquilino} ${a.propietario} ${a.cobra}`).includes(q)) return false;
-    if(axFiltroEtapa === 'sin_tel'){ if(axWAPhone(a.tel_inquilino)) return false; }
+    if(axFiltroEtapa === 'sin_tel'){ if(axTelGrupo(a)) return false; }
     else if(axFiltroEtapa && axEtapa(axPagoDe(a.id)) !== axFiltroEtapa) return false;
     if(axSoloAumento && !axAumento(a, axPeriodo)) return false;
     return true;
@@ -304,7 +343,7 @@ function renderAlquileres(){
   const cuenta = tab => axUnidadesTab(tab).filter(axActiva).length;
   const conAumento = activasTab.filter(a => axAumento(a, axPeriodo));
   const chip = (val, label, n) => `<button class="btn-sm" onclick="axFiltroEtapa='${val}';renderAlquileres()" style="${axFiltroEtapa === val ? 'background:var(--text);color:white;border-color:var(--text)' : ''}">${label}${n !== undefined ? ` · ${n}` : ''}</button>`;
-  const sinTel = activasTab.filter(a => !axWAPhone(a.tel_inquilino)).length;
+  const sinTel = activasTab.filter(a => !axTelGrupo(a)).length;
 
   document.getElementById('main').innerHTML = `
     <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
@@ -385,13 +424,13 @@ function axRenderGrupos(orden, grupos){
 function axRenderFila(a){
   const p = axPagoDe(a.id), e = axEtapa(p), et = AX_ETAPAS[e] || AX_ETAPAS.sin_avisar;
   const c = axCalculoMes(a), au = axAumento(a, axPeriodo);
-  const tel = axWAPhone(a.tel_inquilino);
+  const tel = axTelGrupo(a);
   const abierta = axOpen === a.id;
   const aumentoIcon = au && !au.soloTexto ? (c.aj || au.yaIncluido ? ' <span title="Aumento ICL aplicado" style="color:var(--green)">⬆</span>' : ' <span title="Le toca aumento: revisalo arriba" style="color:var(--accent)">⬆</span>') : '';
   const comp = p?.comprobante_url ? ` <a href="${axH(p.comprobante_url)}" target="_blank" onclick="event.stopPropagation()" title="El inquilino subió comprobante">📎</a>` : '';
   return `<tr id="ax-row-${a.id}" data-ax="${a.id}" tabindex="0" onclick="axToggle(${a.id})" style="background:${et.bg}">
       <td style="background:${et.bg}" title="${axH(axNombreUnidad(a))}"><b style="font-weight:500">${axH(axNombreUnidad(a))}</b>${aumentoIcon}</td>
-      <td style="background:${et.bg}" title="${axH(a.inquilino)}">${axH(a.inquilino)}${tel ? '' : ' <span title="Falta teléfono">📵</span>'}</td>
+      <td style="background:${et.bg}" title="${axH(a.inquilino)}">${axH(a.inquilino)}${tel ? '' : ' <span title="Falta teléfono">📵</span>'}${axGrupoInquilino(a).length > 1 ? ` <span title="Un solo WhatsApp para sus ${axGrupoInquilino(a).length} unidades" style="font-size:11px;color:var(--blue)">👥${axGrupoInquilino(a).length}</span>` : ''}</td>
       <td style="background:${et.bg};font-size:11px;color:var(--text-2)" title="${axH(axTipoContrato(a))}">${axH(axTipoContrato(a) ? axTipoContrato(a).charAt(0) + axTipoContrato(a).slice(1).toLowerCase() : '—')}</td>
       <td style="background:${et.bg};font-weight:500">${axMonto(c.total, c.usd)}${comp}</td>
       <td style="background:${et.bg}"><span class="badge" style="background:${et.pill};color:${et.color}">${et.label}</span></td>
@@ -440,12 +479,14 @@ function axRenderDetalle(a){
         </select>
         <button class="btn-sm" onclick="axSetEtapa(${a.id},'rendido')" ${e === 'rendido' ? 'disabled style="opacity:.35"' : ''}>Marcar rendido</button>
       </div>
+      <button class="btn-sm" style="margin-top:10px" onclick="axEditarUnidad(${a.id})">✎ Editar datos de la unidad</button>
     </div>
     <div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
         <span style="font-size:11px;font-weight:500;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px">Mensaje de WhatsApp</span>
         ${axMsgEditado[a.id] !== undefined ? `<button class="btn-sm" onclick="delete axMsgEditado[${a.id}];renderAlquileres()">↺ Regenerar</button>` : ''}
       </div>
+      ${axGrupoInquilino(a).length > 1 ? `<div style="font-size:11px;color:var(--blue);margin-bottom:6px">👥 Este mensaje incluye sus ${axGrupoInquilino(a).length} unidades: ${axGrupoInquilino(a).map(x => axH(axNombreUnidad(x))).join(' · ')}. "Avisado" las marca a todas.</div>` : ''}
       <textarea id="ax-msg-${a.id}" oninput="axMsgEditado[${a.id}]=this.value" style="width:100%;min-height:230px;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:12px;line-height:1.45;background:var(--surface);box-sizing:border-box;resize:vertical">${axH(msg)}</textarea>
       <div style="display:flex;gap:8px;margin-top:8px">
         <button onclick="axWhatsApp(${a.id})" style="flex:1;padding:9px;background:#25D366;color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">💬 Abrir WhatsApp</button>
@@ -476,7 +517,7 @@ function axRenderICL(conAumento){
     } else if(c.error){
       cols = `<td ${td} colspan="6" style="padding:8px 10px;font-size:12px;color:var(--text-3)">${axH(c.error)}${au.fechaAjuste ? ` · rige desde ${axFmtFecha(au.fechaAjuste)}` : ''}</td><td ${td}></td>`;
     } else {
-      cols = `<td ${td}>${axFmtFecha(au.fechaBase)} → ${axFmtFecha(au.fechaAjuste)}</td>
+      cols = `<td ${td}>${axFmtFecha(au.fechaBase)} → ${axFmtFecha(au.fechaAjuste)}${au.atrasado ? '<div style="font-size:10px;color:var(--orange)">incluye aumentos sin aplicar desde esa fecha</div>' : ''}</td>
         <td ${td} title="ICL del ${c.ini.fecha}">${c.ini.valor.toFixed(2)}</td>
         <td ${td} title="ICL del ${c.fin.fecha}">${c.fin.valor.toFixed(2)}${c.provisorio ? `<div style="font-size:10px;color:var(--orange)">provisorio: último publicado ${axFmtFecha(axParseFecha(c.fin.fecha))}</div>` : ''}</td>
         <td ${td}><b>${c.coef.toFixed(4)}</b> <span style="color:var(--text-3)">(+${((c.coef - 1) * 100).toFixed(2)}%)</span></td>
@@ -528,11 +569,16 @@ async function axAsegurarPago(a){
   return data;
 }
 
-async function axSetEtapa(id, etapa, desdeSelector){
+async function axSetEtapa(id, etapa, desdeSelector, enGrupo){
   if(!axSchemaOK){ showToast('Primero hay que correr el script SQL'); return; }
   const a = axAlq.find(x => x.id === id); if(!a) return;
   const orden = ['sin_avisar','avisado','pagado','rendido'];
   if(!desdeSelector && axPagoDe(id) && orden.indexOf(etapa) <= orden.indexOf(axEtapa(axPagoDe(id)))) return;
+  if(etapa === 'avisado' && !desdeSelector && !enGrupo){
+    const otras = axGrupoInquilino(a).slice(1).filter(x => axEtapa(axPagoDe(x.id)) === 'sin_avisar');
+    const msgGrupo = document.getElementById(`ax-msg-${id}`)?.value || axMsgEditado[id] || axMensaje(a);
+    for(const x of otras){ axMsgEditado[x.id] = msgGrupo; await axSetEtapa(x.id, 'avisado', false, true); }
+  }
   const p = await axAsegurarPago(a); if(!p) return;
   const ahora = new Date().toISOString();
   const c = axCalculoMes(a);
@@ -556,6 +602,7 @@ async function axSetEtapa(id, etapa, desdeSelector){
   const { error } = await db.from('pagos_mensuales').update(upd).eq('id', p.id);
   if(error){ showToast('Error: ' + error.message); return; }
   Object.assign(p, upd);
+  if(enGrupo) return;
   showToast(`${axNombreUnidad(a)} → ${AX_ETAPAS[etapa].label}`);
   renderAlquileres();
   document.getElementById(`ax-row-${id}`)?.focus({ preventScroll: true });
@@ -563,7 +610,7 @@ async function axSetEtapa(id, etapa, desdeSelector){
 
 function axWhatsApp(id){
   const a = axAlq.find(x => x.id === id); if(!a) return;
-  const tel = axWAPhone(a.tel_inquilino);
+  const tel = axTelGrupo(a);
   if(!tel){
     axOpen = id; renderAlquileres();
     const inp = document.getElementById(`ax-tel-${id}`); if(inp){ inp.focus(); inp.scrollIntoView({ block: 'center' }); }
@@ -669,6 +716,77 @@ async function axDeshacerICL(id){
   axAjustes = axAjustes.filter(x => x.id !== aj.id);
   delete axMsgEditado[id];
   showToast('Aumento deshecho');
+  renderAlquileres();
+}
+
+// ---------- editar datos de la unidad ----------
+const AX_EDIT = [
+  ['propietario', 'Propietario', 'text'], ['inquilino', 'Inquilino', 'text'], ['email_inquilino', 'Email inquilino', 'text'],
+  ['cobra', 'Cobra', 'text'], ['inicio_contrato', 'Inicio contrato', 'date'], ['fin_contrato', 'Fin contrato', 'date'],
+  ['tipo_contrato', 'Tipo de contrato', ['TRIMESTRAL','CUATRIMESTRAL','SEMESTRAL','FIJO','SIN CONTRATO']],
+  ['mes_aumento', 'Mes aumento (texto)', 'text'], ['fecha_ultimo_ajuste', 'Último aumento aplicado', 'date'],
+  ['moneda', 'Moneda', ['ARS','USD']], ['alq_inicial', 'Alquiler inicial', 'number'], ['alq_actual', 'Alquiler actual ($)', 'number'],
+  ['alq_actual_usd', 'Alquiler actual (USD)', 'number'], ['comision_pct', 'Comisión MAO (%)', 'number'],
+];
+function axFechaParaInput(v){ return axISO(axParseFecha(v)) || ''; }
+// Guarda la fecha con el mismo formato que ya usa la base (DD/MM/AAAA o AAAA-MM-DD)
+function axFechaParaBase(iso, campo){
+  if(!iso) return null;
+  if(campo === 'fecha_ultimo_ajuste') return iso;
+  const usaBarra = axAlq.some(x => String(x[campo] || '').includes('/'));
+  if(!usaBarra) return iso;
+  const [y, m, d] = iso.split('-'); return `${d}/${m}/${y}`;
+}
+function axEditarUnidad(id){
+  const a = axAlq.find(x => x.id === id); if(!a) return;
+  document.getElementById('ax-modal')?.remove();
+  const campo = ([k, label, tipo]) => {
+    let v = a[k] ?? '';
+    if(k === 'comision_pct' && v !== '') v = Math.round(Number(v) * 10000) / 100;
+    if(tipo === 'date') v = axFechaParaInput(v);
+    if(k === 'tipo_contrato') v = axTipoContrato(a);
+    if(k === 'moneda') v = axEsUSD(a) ? 'USD' : 'ARS';
+    const inp = Array.isArray(tipo)
+      ? `<select id="ax-e-${k}" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-family:inherit;font-size:13px"><option value=""></option>${tipo.map(o => `<option ${o === v ? 'selected' : ''}>${o}</option>`).join('')}</select>`
+      : `<input id="ax-e-${k}" type="${tipo}" value="${axH(v)}" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-family:inherit;font-size:13px;box-sizing:border-box">`;
+    return `<label style="font-size:11px;color:var(--text-3)">${label}${inp}</label>`;
+  };
+  const m = document.createElement('div');
+  m.id = 'ax-modal';
+  m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px';
+  m.innerHTML = `<div style="background:var(--surface);border-radius:var(--radius);width:100%;max-width:620px;padding:20px 22px;max-height:90vh;overflow:auto">
+    <div style="font-family:'DM Serif Display',serif;font-size:18px;margin-bottom:12px">Editar · ${axH(axNombreUnidad(a))}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">${AX_EDIT.map(campo).join('')}</div>
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button class="btn-sm" style="flex:1;padding:9px" onclick="document.getElementById('ax-modal').remove()">Cancelar</button>
+      <button class="btn-primary" style="flex:1" onclick="axGuardarUnidad(${a.id})">Guardar</button>
+    </div></div>`;
+  document.body.appendChild(m);
+}
+async function axGuardarUnidad(id){
+  const a = axAlq.find(x => x.id === id); if(!a) return;
+  const upd = {};
+  AX_EDIT.forEach(([k, , tipo]) => {
+    let v = document.getElementById(`ax-e-${k}`)?.value.trim() ?? '';
+    if(tipo === 'number') v = v === '' ? null : Number(v.replace(',', '.'));
+    else if(tipo === 'date') v = axFechaParaBase(v, k);
+    else v = v === '' ? null : v;
+    if(k === 'comision_pct' && v !== null) v = v / 100;
+    const antes = a[k] ?? null;
+    if(String(antes ?? '') !== String(v ?? '')) upd[k] = v;
+  });
+  if(upd.tipo_contrato !== undefined) upd.periodicidad_meses = { TRIMESTRAL: 3, CUATRIMESTRAL: 4, SEMESTRAL: 6 }[upd.tipo_contrato] || null;
+  if(upd.comision_pct !== undefined || upd.alq_actual !== undefined){
+    const pct = upd.comision_pct ?? a.comision_pct, alq = upd.alq_actual ?? a.alq_actual;
+    upd.comision_adm = pct > 0 && pct < 1 ? Math.round(alq * pct) : null;
+  }
+  if(Object.keys(upd).length === 0){ document.getElementById('ax-modal')?.remove(); return; }
+  const { error } = await db.from('alquileres').update(upd).eq('id', id);
+  if(error){ showToast('Error: ' + error.message); return; }
+  Object.assign(a, upd);
+  document.getElementById('ax-modal')?.remove();
+  delete axMsgEditado[id];
+  showToast('Datos guardados ✓');
   renderAlquileres();
 }
 

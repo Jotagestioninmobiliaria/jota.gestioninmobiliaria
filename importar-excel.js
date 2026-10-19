@@ -89,7 +89,34 @@ function axLeerHoja(ws){
       gas_cliente: axCelda(g('gas_cliente')), gas_persona: axCelda(g('gas_persona')), epe_cliente: axCelda(g('epe_cliente')), epe_plan: axCelda(g('epe_plan')),
     });
   }
+  axAplicarCorrecciones(filas);
   return { filas, ignoradas };
+}
+
+// Correcciones que indicó Juliana sobre el Excel de octubre 2026 (se muestran en el resumen).
+// Se buscan por edificio + unidad; si el Excel ya trae el dato corregido no cambian nada.
+const AX_CORRECCIONES = [
+  { edificio: 'SANTA FE 2833', unidad: '1-A + EE04', nota: 'Contrato renovado: 16/09/2026 al 15/09/2028, $650.000 inicial y actual',
+    set: { inicio: '2026-09-16', fin: '2028-09-15', alq_inicial: 650000, alq_actual: 650000 } },
+  { edificio: 'ITALIA 1275', unidad: '5-D', nota: 'Es trimestral: aumenta en julio, octubre, enero y abril. Nunca se aumentó, se recalcula desde el inicio',
+    set: { tipo_contrato: 'TRIMESTRAL', periodicidad: 3, mes_aumento: 'JULIO-OCTUBRE-ENERO-ABRIL' }, sinAumentosIncluidos: true },
+  { edificio: 'ITUZAINGO 654', unidad: '7-1 + EE 29', nota: 'Propietario DB+GB', set: { propietario: 'DB+GB' } },
+  { edificio: 'AMENABAR 1941', unidad: null, nota: 'En venta: no se importa', omitir: true },
+  { edificio: 'FIHSERTON GOLF', unidad: 'EE 1', nota: 'Incluida en el alquiler del U2 P1-A', padre: 'U2 P1-A' },
+  { edificio: 'FIHSERTON GOLF', unidad: 'EE 2', nota: 'Incluida en el alquiler del U2 P1-A', padre: 'U2 P1-A' },
+  { edificio: 'SANTA FE 2833', unidad: 'EE 04', nota: 'Incluida en el alquiler del 1-A', padre: '1-A + EE04' },
+];
+function axAplicarCorrecciones(filas){
+  const igual = (f, ed, un) => axCompact(f.edificio) === axCompact(ed) && axCompact(f.unidad) === axCompact(un);
+  AX_CORRECCIONES.forEach(c => {
+    filas.filter(f => igual(f, c.edificio, c.unidad)).forEach(f => {
+      if(c.set) Object.assign(f, c.set);
+      if(c.omitir) f.omitir = true;
+      if(c.sinAumentosIncluidos) f.sinAumentosIncluidos = true;
+      if(c.padre){ const p = filas.find(x => igual(x, f.edificio, c.padre)); if(p) f.padreFila = p.fila; }
+      f.correccion = c.nota;
+    });
+  });
 }
 
 // Objeto con la forma de "alquileres" para reutilizar las reglas de la vista (pestaña, aumento, vacante)
@@ -238,7 +265,7 @@ function axRenderImport(){
   const porId = Object.fromEntries(alqs.map(a => [a.id, a]));
   const [em, ey] = axImp.periodo.split('-').map(Number);
   const prox = em === 12 ? `01-${ey + 1}` : `${String(em + 1).padStart(2,'0')}-${ey}`;
-  filas.forEach(f => { f.ultimo_ajuste = axUltimoAjuste(f, axImp.periodo); });
+  filas.forEach(f => { f.ultimo_ajuste = f.sinAumentosIncluidos ? null : axUltimoAjuste(f, axImp.periodo); });
   const opcionesMes = [];
   for(let i = -3; i <= 1; i++){
     const d = new Date(new Date().getFullYear(), new Date().getMonth() + i, 1);
@@ -248,7 +275,7 @@ function axRenderImport(){
 
   // Resumen por pestaña y propietario
   const res = {};
-  filas.forEach(f => {
+  filas.filter(f => !f.omitir).forEach(f => {
     const x = axComoAlquiler(f);
     const tab = !f.propietario ? 'Sin propietario' : axTabDe(x) === 'dbgb' ? 'DB / GB' : 'Propietarios';
     const k = `${tab}|${f.propietario || '(sin propietario)'}`;
@@ -256,20 +283,27 @@ function axRenderImport(){
     if(axActiva(x)){ r.act++; if(f.moneda === 'USD') r.usd += f.alq_usd; else r.ars += f.alq_actual; } else r.vac++;
   });
   const resFilas = Object.values(res).sort((a, b) => a.tab.localeCompare(b.tab) || a.prop.localeCompare(b.prop, 'es'));
-  const vacantes = filas.filter(f => !axActiva(axComoAlquiler(f)));
+  const vacantes = filas.filter(f => !f.omitir && !f.padreFila && !axActiva(axComoAlquiler(f)));
   const aumentos = filas.map(f => ({ f, au: axAumento(axComoAlquiler(f), prox) })).filter(x => x.au && axActiva(axComoAlquiler(x.f)));
-  const sinProp = filas.filter(f => !f.propietario);
+  const sinProp = filas.filter(f => !f.propietario && !f.omitir);
+  const corregidas = filas.filter(f => f.correccion);
 
   // Cambios
   filas.forEach(f => {
     const a = f.matchId ? porId[f.matchId] : null;
     Object.assign(f, axCambios(f, a, formato));
+    // Unidades incluidas en el alquiler de otra (cocheras del depto): se vinculan con parent_id
+    if(f.padreFila){
+      const padre = filas.find(x => x.fila === f.padreFila);
+      if(a && !a.parent_id && padre?.matchId) f.cambios.push({ col: 'parent_id', antes: null, nuevo: padre.matchId, texto: `parte de ${padre.edificio} ${padre.unidad}` });
+    }
+    if(f.omitir){ f.aplicar = false; f.cambios = []; f.vacia = []; }
     if(f.aplicar === undefined) f.aplicar = a ? f.cambios.length > 0 : !!f.inquilino;
     if(f.vaciar === undefined) f.vaciar = false;
   });
   const conCambios = filas.filter(f => f.matchId && f.cambios.length);
   const sinCambios = filas.filter(f => f.matchId && !f.cambios.length && !f.vacia.length);
-  const nuevas = filas.filter(f => !f.matchId);
+  const nuevas = filas.filter(f => !f.matchId && !f.omitir);
   const usados = new Set(filas.map(f => f.matchId).filter(Boolean));
   const noEnExcel = alqs.filter(a => !usados.has(a.id));
   const opcionesBase = alqs.map(a => `<option value="${a.id}">#${a.id} · ${axH(axNombreUnidad(a))} · ${axH(a.inquilino || 'sin inquilino')}</option>`).join('');
@@ -289,6 +323,8 @@ function axRenderImport(){
       ${resFilas.map(r => `<tr style="cursor:default"><td ${tdS}>${r.tab}</td><td ${tdS}>${axH(r.prop)}</td><td ${tdS}>${r.act}</td><td ${tdS}>${r.vac}</td><td ${tdS}>${axPesos(r.ars)}</td><td ${tdS}>${r.usd ? axUSD(r.usd) : '—'}</td></tr>`).join('')}
       </tbody></table>`)}
 
+    ${corregidas.length ? `<div style="background:var(--green-bg);color:var(--green);border-radius:var(--radius);padding:10px 14px;margin-bottom:16px;font-size:12px"><b>Correcciones que me indicaste (ya aplicadas en este resumen):</b>
+      ${corregidas.map(f => `<div>· Fila ${f.fila} ${axH(f.edificio)} ${axH(f.unidad || '')}: ${axH(f.correccion)}</div>`).join('')}</div>` : ''}
     ${sinProp.length ? `<div style="background:var(--orange-bg);color:var(--orange);border-radius:var(--radius);padding:10px 14px;margin-bottom:16px;font-size:12px">⚠ Sin propietario en el Excel: ${sinProp.map(f => `fila ${f.fila} (${axH(f.edificio)} ${axH(f.unidad || '')})`).join(', ')}. Se importa sin cambiar el propietario que tenga hoy la base.</div>` : ''}
 
     ${tabla(`2 · Vacantes / sin importe (${vacantes.length})`, `<table style="table-layout:auto"><tbody>
@@ -310,7 +346,7 @@ function axRenderImport(){
           <td ${tdS}><b>Fila ${f.fila}</b><br>${axH(f.edificio)} ${axH(f.unidad)}<br><span style="color:var(--text-3)">${axH(f.inquilino || '')}</span></td>
           <td ${tdS}><select onchange="axImpMatch(${f.fila},this.value)" style="max-width:240px;font-size:11px"><option value="">— unidad nueva —</option>${opcionesBase.replace(`value="${a.id}"`, `value="${a.id}" selected`)}</select>
             ${f.puntaje < 5 ? '<div style="color:var(--orange);font-size:11px;margin-top:3px">⚠ coincidencia dudosa, revisá</div>' : ''}</td>
-          <td ${tdS}>${f.cambios.map(c => `<div><span style="color:var(--text-3)">${nombreCampo(c.col)}:</span> ${val(c.antes)} → <b>${val(c.nuevo)}</b></div>`).join('')}
+          <td ${tdS}>${f.cambios.map(c => `<div><span style="color:var(--text-3)">${nombreCampo(c.col)}:</span> ${val(c.antes)} → <b>${c.texto ? axH(c.texto) : val(c.nuevo)}</b></div>`).join('')}
             ${f.vacia.length ? `<div style="margin-top:6px;color:var(--red)"><label><input type="checkbox" ${f.vaciar ? 'checked' : ''} onchange="axImpSet(${f.fila},'vaciar',this.checked)"> En el Excel figura vacante: vaciar ${f.vacia.map(v => `${nombreCampo(v.col)} (hoy: ${axH(v.antes)})`).join(' y ')}</label></div>` : ''}</td>
         </tr>`;
       }).join('') || `<tr><td ${tdS} colspan="4">Ninguna</td></tr>`}
@@ -367,16 +403,21 @@ async function axAplicarImport(){
   const idProp = n => props.find(p => axNorm(p.nombre) === axNorm(n))?.id ?? null;
   const tieneDireccion = axImp.alqs.some(a => 'direccion' in a);
   let ok = 0, err = 0;
+  const idPorFila = Object.fromEntries(axImp.filas.filter(f => f.matchId).map(f => [f.fila, f.matchId]));
   for(const f of sel){
     const a = f.matchId ? axImp.alqs.find(x => x.id === f.matchId) : null;
     const upd = {};
     if(f.aplicar) f.cambios.forEach(c => { upd[c.col] = c.nuevo; });
     if(a && f.vaciar) f.vacia.forEach(v => { upd[v.col] = v.col === 'alq_actual' ? 0 : null; });
     if(f.propietario){ const pid = idProp(f.propietario); if(pid && (!a || a.propietario_id !== pid)) upd.propietario_id = pid; }
+    if(!a && f.padreFila && idPorFila[f.padreFila]) upd.parent_id = idPorFila[f.padreFila];
     if(Object.keys(upd).length === 0) continue;
     let res;
     if(a) res = await db.from('alquileres').update(upd).eq('id', a.id);
-    else res = await db.from('alquileres').insert({ unidad: f.unidad || f.edificio, ...(tieneDireccion ? { direccion: f.edificio } : {}), ...upd });
+    else {
+      res = await db.from('alquileres').insert({ unidad: f.unidad || f.edificio, ...(tieneDireccion ? { direccion: f.edificio } : {}), ...upd }).select().single();
+      if(!res.error && res.data) idPorFila[f.fila] = res.data.id;
+    }
     if(res.error){ err++; escribir(`❌ Fila ${f.fila} (${axH(f.edificio)} ${axH(f.unidad)}): ${axH(res.error.message)}`, true); }
     else ok++;
   }
