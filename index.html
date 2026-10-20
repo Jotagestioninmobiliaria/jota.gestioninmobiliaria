@@ -228,6 +228,9 @@
       <div class="nav-item" id="nav-vendidas" onclick="setView('vendidas')">
         <span class="nav-icon">🏆</span> Vendidas
       </div>
+      <div class="nav-item" id="nav-fueraventa" onclick="setView('fueraventa')">
+        <span class="nav-icon">⏸</span> Fuera de venta
+      </div>
       <div class="nav-item" id="nav-alquileres2" onclick="setView('alquileres2')">
         <span class="nav-icon">🗓</span> Alquileres
       </div>
@@ -740,9 +743,11 @@ function parseFecha(str){
 }
 
 function filtered(){
-  let list = currentView === "alquiladas" ? props.filter(p => p.alquilado && !p.vendida)
+  // "Fuera de venta": se guardan con sus datos pero no aparecen en Venta ni suman en los totales
+  let list = currentView === "alquiladas" ? props.filter(p => p.alquilado && !p.vendida && !p.fuera_venta)
            : currentView === "vendidas"   ? props.filter(p => p.vendida)
-           : props.filter(p => !p.vendida);
+           : currentView === "fueraventa" ? props.filter(p => p.fuera_venta && !p.vendida)
+           : props.filter(p => !p.vendida && !p.fuera_venta);
 
   if(currentUser && currentUser.rol === "ventas"){
     if(currentView === "alquiladas"){
@@ -947,15 +952,16 @@ function renderVendidas(list){
 
 function renderMain(){
   const vend = props.filter(p => p.vendida).length;
-  const vac = props.filter(p => p.situacion === "Vacía" && !p.vendida).length;
-  const alq = props.filter(p => p.situacion === "Alquilada" && !p.vendida).length;
-  const hab = props.filter(p => p.situacion === "Habitada" && !p.vendida).length;
-  const ingresos = props.filter(p => p.alquilado && !p.vendida).reduce((a,p) => a + (p.alq_mensual||0), 0);
-  const totalVenta = props.filter(p => !p.vendida).reduce((a,p) => a + (p.precio||0), 0);
+  const enVenta = props.filter(p => !p.vendida && !p.fuera_venta);
+  const vac = enVenta.filter(p => p.situacion === "Vacía").length;
+  const alq = enVenta.filter(p => p.situacion === "Alquilada").length;
+  const hab = enVenta.filter(p => p.situacion === "Habitada").length;
+  const ingresos = enVenta.filter(p => p.alquilado).reduce((a,p) => a + (p.alq_mensual||0), 0);
+  const totalVenta = enVenta.reduce((a,p) => a + (p.precio||0), 0);
   const list = filtered();
   const isAlq = currentView === "alquiladas";
   const isVend = currentView === "vendidas";
-  const titulo = isAlq ? "En venta alquiladas" : isVend ? "Propiedades Vendidas" : "Propiedades en Venta";
+  const titulo = isAlq ? "En venta alquiladas" : isVend ? "Propiedades Vendidas" : currentView === "fueraventa" ? "Fuera de venta" : "Propiedades en Venta";
 
   document.getElementById("main").innerHTML = `
     <div class="page-header">
@@ -963,7 +969,7 @@ function renderMain(){
       <p>${new Date().toLocaleDateString("es-AR",{weekday:"long",year:"numeric",month:"long",day:"numeric"})}</p>
     </div>
     <div class="stats">
-      <div class="stat-card"><div class="stat-label">Total</div><div class="stat-value">${props.filter(p=>!p.vendida).length}</div></div>
+      <div class="stat-card"><div class="stat-label">Total</div><div class="stat-value">${enVenta.length}</div></div>
       <div class="stat-card"><div class="stat-label">Disponibles</div><div class="stat-value green">${vac}</div></div>
       <div class="stat-card"><div class="stat-label">Alquiladas</div><div class="stat-value orange">${alq}</div></div>
       <div class="stat-card"><div class="stat-label">Habitadas</div><div class="stat-value blue">${hab}</div></div>
@@ -1082,6 +1088,7 @@ function openDetail(id){
       <button class="btn-secondary" onclick="toggleHistorial(${p.id})">📈 Historial</button>
       <button class="btn-secondary" onclick="closePanel()">Cerrar</button>
       ${!p.vendida ? `<button class="btn-danger" onclick="marcarVendidaModal(${p.id})">🏆 Vender</button>` : `<span style="font-size:12px;color:var(--accent);font-weight:600;padding:9px">✓ Vendida</span>`}
+      ${!p.vendida ? `<button class="btn-secondary" onclick="toggleFueraVenta(${p.id})">${p.fuera_venta ? "↩ Volver a venta" : "⏸ Sacar de venta"}</button>` : ""}
     </div>
     <!-- Documentos -->
     <div style="border-top:1px solid var(--border);padding:16px">
@@ -1335,6 +1342,17 @@ async function deleteProp(id){
   if(error){ showToast("Error: " + error.message); return; }
   props = props.filter(p => p.id !== id);
   closePanel(); showToast("Propiedad eliminada ✓"); renderMain();
+}
+
+async function toggleFueraVenta(id){
+  const p = props.find(x => x.id === id);
+  if(!p) return;
+  const fuera = !p.fuera_venta;
+  if(!confirm(fuera ? `¿Sacar de venta "${p.direccion}"?\nSe guardan todos sus datos y la podés volver a poner en venta desde "Fuera de venta".` : `¿Volver a poner en venta "${p.direccion}"?`)) return;
+  const { error } = await db.from("propiedades").update({ fuera_venta: fuera }).eq("id", id);
+  if(error){ showToast("Error: " + error.message); return; }
+  p.fuera_venta = fuera;
+  closePanel(); showToast(fuera ? "Propiedad fuera de venta ✓" : "Propiedad otra vez en venta ✓"); renderMain();
 }
 
 function marcarVendidaModal(id){
@@ -2905,6 +2923,8 @@ function applyRole(user){
     if(navProp) navProp.style.display = "none";
     const navVend = document.getElementById("nav-vendidas");
     if(navVend) navVend.style.display = "none";
+    const navFV = document.getElementById("nav-fueraventa");
+    if(navFV) navFV.style.display = "none";
     const navAlq = document.getElementById("nav-alquiladas");
     if(navAlq) navAlq.style.display = "none";
     const navAl = document.getElementById("nav-alertas");
