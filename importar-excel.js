@@ -364,7 +364,7 @@ function axRenderImport(){
     // Unidades incluidas en el alquiler de otra (cocheras del depto): se vinculan con parent_id
     if(f.padreFila){
       const padre = filas.find(x => x.fila === f.padreFila);
-      if(a && !a.parent_id && padre?.matchId) f.cambios.push({ col: 'parent_id', antes: null, nuevo: padre.matchId, texto: `parte de ${padre.edificio} ${padre.unidad}` });
+      if(a && (!a.parent_id || a.parent_id === a.id) && padre?.matchId) f.cambios.push({ col: 'parent_id', antes: null, nuevo: padre.matchId, texto: `parte de ${padre.edificio} ${padre.unidad}` });
     }
     if(a && f.renombrar && a.unidad !== f.renombrar) f.cambios.unshift({ col: 'unidad', antes: a.unidad, nuevo: f.renombrar });
     if(f.omitir){ f.aplicar = false; f.cambios = []; f.vacia = []; }

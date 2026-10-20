@@ -59,7 +59,9 @@ function axPeriodicidad(a){
 }
 function axEsUSD(a){ return a.moneda === 'USD' || (!(Number(a.alq_actual) > 0) && Number(a.alq_actual_usd) > 0); }
 function axImporte(a){ return Number(axEsUSD(a) ? a.alq_actual_usd : a.alq_actual) || 0; }
-function axActiva(a){ return a.activo !== false && !a.parent_id && !!(a.inquilino || '').trim() && axImporte(a) > 0; }
+// En la base algunas unidades combinadas tienen parent_id = su propio id: no son "hijas"
+function axEsHija(a){ return !!a.parent_id && a.parent_id !== a.id; }
+function axActiva(a){ return a.activo !== false && !axEsHija(a) && !!(a.inquilino || '').trim() && axImporte(a) > 0; }
 function axTabDe(a){ const p = axNorm(a.propietario).replace(/\s/g,''); return (p === 'DB' || p === 'DB+GB') ? 'dbgb' : 'prop'; }
 function axSinICL(a){ const t = axTipoContrato(a); return t === 'FIJO' || t === 'SIN CONTRATO' || axEsUSD(a); }
 function axEdificio(a){ return a.edificio || a.direccion || ''; }
@@ -327,7 +329,7 @@ function axCalculoICL(a){
 }
 
 // ---------- render ----------
-function axUnidadesTab(tab){ return axAlq.filter(a => a.activo !== false && !a.parent_id && axTabDe(a) === tab); }
+function axUnidadesTab(tab){ return axAlq.filter(a => a.activo !== false && !axEsHija(a) && axTabDe(a) === tab); }
 
 function axTotales(lista){
   const t = { ars: 0, usd: 0, cobArs: 0, cobUsd: 0, n: 0, etapas: { sin_avisar: 0, avisado: 0, pagado: 0, rendido: 0 } };
