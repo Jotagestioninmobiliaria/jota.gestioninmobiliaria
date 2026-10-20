@@ -100,6 +100,8 @@ const AX_CORRECCIONES = [
     set: { inicio: '2026-09-16', fin: '2028-09-15', alq_inicial: 650000, alq_actual: 650000 } },
   { edificio: 'ITALIA 1275', unidad: '5-D', nota: 'Trimestral (julio, octubre, enero, abril). Paga hoy $503.783 (con el aumento de julio); el de octubre va en noviembre con diferencia',
     set: { tipo_contrato: 'TRIMESTRAL', periodicidad: 3, mes_aumento: 'JULIO-OCTUBRE-ENERO-ABRIL', alq_inicial: 450000, alq_actual: 503783 } },
+  { edificio: 'BALCARCE 45 BIS', unidad: 'EE 01', nota: 'Juan Baleares: es la "EE 02" de la base (la base está bien)', base: 'BALCARCE 45 BIS EE 02' },
+  { edificio: 'BALCARCE 45 BIS', unidad: 'EE 02', nota: 'Ana María Fleidman: es la "EE 10" de la base (la base está bien)', base: 'BALCARCE 45 BIS EE 10' },
   { edificio: 'ITUZAINGO 654', unidad: 'SS BAULERA9', nota: 'Pagliero alquila la Baulera 9: en la base estaba cargada como "Baulera 10", se corrige el nombre',
     base: 'ITUZAINGO 654 -SS BAULERA 10', renombrar: 'ITUZAINGO 654 -SS BAULERA 9' },
   { edificio: 'ITUZAINGO 654', unidad: '2-1', nota: 'Contrato renovado con el mismo inquilino: 09/08/2026 al 08/08/2028',
