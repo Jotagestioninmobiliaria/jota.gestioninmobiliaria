@@ -109,6 +109,7 @@ const AX_CORRECCIONES = [
   { edificio: 'BELGRANO 766', unidad: 'P6', nota: 'Contrato nuevo del 10/09/2026 al 09/09/2028: $1.050.000 inicial y actual', set: { inicio: '2026-09-10', fin: '2028-09-09', alq_actual: 1050000 } },
   { edificio: 'BALCARCE 45 BIS', unidad: '4-A', nota: 'Paga $466.157 (contrato de 1 año: 19/02/2026 al 18/02/2027)', set: { alq_actual: 466157 } },
   { edificio: 'PARAGUAY 339', unidad: '2-D', nota: 'Paga $308.097 (aumento del 14/09/2026 según ICL)', set: { alq_actual: 308097 } },
+  { edificio: 'SAN LUIS 624', unidad: '5-2', nota: 'Paga $672.727 (aumento del 25/06/2026); el del 25/10 va en noviembre con diferencia', set: { alq_actual: 672727 } },
   { edificio: 'BALCARCE 45 BIS', unidad: '2-A', nota: 'El contrato vence el 31/10/2026', set: { fin: '2026-10-31' } },
   { edificio: 'ITUZAINGO 654', unidad: '7-1 + EE 29', nota: 'Propietario DB+GB', set: { propietario: 'DB+GB' } },
   { edificio: 'ITUZAINGO 654', unidad: 'SS EE M3', nota: 'Desocupada: se quita el inquilino (Vaccaro Lumina)', vaciar: true },
