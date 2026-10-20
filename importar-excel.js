@@ -117,7 +117,7 @@ const AX_CORRECCIONES = [
   { edificio: 'PJE SANTA CRUZ', unidad: 'PJE SANTA CRUZ', nota: 'Paga $466,118'.replace(/,/g, '.') + ' (el Excel estaba atrasado)', set: { alq_actual: 466118 } },
   { edificio: 'BALCARCE 45 BIS', unidad: 'BALCARCE 45 BIS', nota: 'Paga $4,355,637'.replace(/,/g, '.') + ' (el Excel estaba atrasado)', set: { alq_actual: 4355637 } },
   { edificio: 'ENTRE RIOS 637', unidad: '2-C', nota: 'Paga $499,854'.replace(/,/g, '.') + ' (el Excel estaba atrasado)', set: { alq_actual: 499854 } },
-  { edificio: 'BALCARCE 45 BIS', unidad: '2-A', nota: 'El contrato vence el 31/10/2026', set: { fin: '2026-10-31' } },
+  { edificio: 'BALCARCE 45 BIS', unidad: '2-A', nota: 'Extensión de contrato hasta el 31/10/2026 a $570.000 (precio acordado con el dueño)', set: { fin: '2026-10-31', alq_actual: 570000 } },
   { edificio: 'ITUZAINGO 654', unidad: '7-1 + EE 29', nota: 'Propietario DB+GB', set: { propietario: 'DB+GB' } },
   { edificio: 'ITUZAINGO 654', unidad: 'SS EE M3', nota: 'Desocupada: se quita el inquilino (Vaccaro Lumina)', vaciar: true },
   { edificio: '9 DE JULIO 2233', unidad: '2', nota: 'Desocupada: se quita el inquilino (Joaquín Fernández)', vaciar: true },
