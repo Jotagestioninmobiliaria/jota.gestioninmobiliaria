@@ -285,10 +285,12 @@ async function axGenerarMes(){
 }
 
 async function axCargarICL(){
-  const pend = axAlq.filter(a => axActiva(a)).map(a => axAumentoCobro(a, axPeriodo)).filter(x => x && x.fechaBase && !x.cobroSiguiente);
+  // Para encadenar desde el inicio del contrato se necesita el ICL desde la fecha de inicio
+  const pend = axAlq.filter(a => axActiva(a)).map(a => ({ a, au: axAumentoCobro(a, axPeriodo) }))
+    .filter(x => x.au && x.au.fechaAjuste && !x.au.cobroSiguiente && axParseFecha(x.a.inicio_contrato));
   if(pend.length === 0 || axICLCargando) return;
-  const desde = new Date(Math.min(...pend.map(x => x.fechaBase))); desde.setDate(desde.getDate() - 15);
-  const hasta = new Date(Math.max(...pend.map(x => x.fechaAjuste)));
+  const desde = new Date(Math.min(...pend.map(x => axParseFecha(x.a.inicio_contrato)))); desde.setDate(desde.getDate() - 15);
+  const hasta = new Date(Math.max(...pend.map(x => x.au.fechaAjuste)));
   if(axICL && axICL.desde <= axISO(desde) && axICL.hasta >= axISO(hasta)) return;
   axICLCargando = true; axICLError = null;
   try {
@@ -312,6 +314,26 @@ function axICLEn(fecha){
   return v ? { ...v, exacto: v.fecha === iso } : null;
 }
 
+// Método COCIR: cada período = alquiler inicial × ICL(fecha del aumento) ÷ ICL(fecha de inicio),
+// redondeado al peso. Equivale a encadenar los aumentos sin redondear en el medio, y no depende
+// de que el "alquiler actual" cargado esté al día.
+// Devuelve los montos de cada período hasta la fecha indicada (incluida).
+function axCadenaICL(a, hasta){
+  const ini = axParseFecha(a.inicio_contrato), per = axPeriodicidad(a), base = Number(a.alq_inicial);
+  if(!ini || !per || !(base > 0)) return null;
+  const icl0 = axICLEn(ini);
+  if(!icl0) return null;
+  const pasos = [{ fecha: ini, icl: icl0, monto: base }];
+  for(let k = 1; ; k++){
+    const f = axSumarMeses(ini, k * per);
+    if(f > hasta) break;
+    const icl = axICLEn(f);
+    if(!icl) return null;
+    pasos.push({ fecha: f, icl, monto: Math.round(base * icl.valor / icl0.valor) });
+  }
+  return pasos;
+}
+
 function axCalculoICL(a){
   const au = axAumentoCobro(a, axPeriodo);
   if(!au) return null;
@@ -321,11 +343,18 @@ function axCalculoICL(a){
   if(au.yaIncluido) return { au, incluido: true };
   if(au.soloTexto) return { au, error: 'MES AUMENTO dice este mes, pero por la fecha de inicio no corresponde: revisá el contrato' };
   if(au.sinFechas) return { au, error: 'Falta fecha de inicio o tipo de contrato' };
-  const ini = axICLEn(au.fechaBase), fin = axICLEn(au.fechaAjuste);
-  if(!ini || !fin) return { au, error: axICLError ? 'No se pudo obtener el ICL' : 'Buscando ICL…' };
-  const coef = fin.valor / ini.valor;
-  const anterior = axImporte(a);
-  return { au, ini, fin, coef, anterior, nuevo: Math.round(anterior * coef), provisorio: !fin.exacto };
+  if(!(Number(a.alq_inicial) > 0)) return { au, error: 'Falta el alquiler inicial: cargalo con "✎ Editar datos de la unidad"' };
+  if(!axICL) return { au, error: axICLError ? 'No se pudo obtener el ICL' : 'Buscando ICL…' };
+  const pasos = axCadenaICL(a, au.fechaAjuste);
+  if(!pasos || pasos.length < 2) return { au, error: 'No hay ICL publicado para alguna de las fechas del contrato' };
+  const ult = pasos[pasos.length - 1], prev = pasos[pasos.length - 2];
+  const cargado = axImporte(a);
+  return {
+    au, pasos, ini: prev.icl, fin: ult.icl, coef: ult.icl.valor / prev.icl.valor,
+    anterior: prev.monto, nuevo: ult.monto, provisorio: !ult.icl.exacto,
+    // El monto cargado no coincide con el que corresponde al período anterior según ICL
+    distinto: Math.abs(cargado - prev.monto) > 1 ? cargado : null,
+  };
 }
 
 // ---------- render ----------
@@ -562,7 +591,10 @@ function axRenderICL(conAumento){
     } else if(c.error){
       cols = `<td ${td} colspan="6" style="padding:8px 10px;font-size:12px;color:var(--text-3)">${axH(c.error)}${au.fechaAjuste ? ` · rige desde ${axFmtFecha(au.fechaAjuste)}` : ''}</td><td ${td}></td>`;
     } else {
-      cols = `<td ${td}>${axFmtFecha(au.fechaBase)} → ${axFmtFecha(au.fechaAjuste)}${au.atrasado ? '<div style="font-size:10px;color:var(--orange)">incluye aumentos sin aplicar desde esa fecha</div>' : ''}</td>
+      const pasosTxt = c.pasos.map(p => `${axFmtFecha(p.fecha)}: ICL ${p.icl.valor.toFixed(2)} → ${axPesos(p.monto)}`).join('\n');
+      cols = `<td ${td} title="${axH('Cálculo desde el inicio (como el COCIR):\n' + pasosTxt)}">${axFmtFecha(c.pasos[c.pasos.length - 2].fecha)} → ${axFmtFecha(au.fechaAjuste)}
+          <div style="font-size:10px;color:var(--text-3)">${c.pasos.length - 1}° aumento desde ${axFmtFecha(c.pasos[0].fecha)} ($${Number(a.alq_inicial).toLocaleString('es-AR')})</div>
+          ${c.distinto !== null ? `<div style="font-size:10px;color:var(--orange)">⚠ cargado ${axPesos(c.distinto)}; según ICL el período anterior era ${axPesos(c.anterior)}</div>` : ''}</td>
         <td ${td} title="ICL del ${c.ini.fecha}">${c.ini.valor.toFixed(2)}</td>
         <td ${td} title="ICL del ${c.fin.fecha}">${c.fin.valor.toFixed(2)}${c.provisorio ? `<div style="font-size:10px;color:var(--orange)">provisorio: último publicado ${axFmtFecha(axParseFecha(c.fin.fecha))}</div>` : ''}</td>
         <td ${td}><b>${c.coef.toFixed(4)}</b> <span style="color:var(--text-3)">(+${((c.coef - 1) * 100).toFixed(2)}%)</span></td>
@@ -721,7 +753,7 @@ async function axConfirmarICL(ids){
   for(const { a, c } of calc){
     const registro = {
       alquiler_id: a.id, periodo: axPeriodo,
-      fecha_base: axISO(c.au.fechaBase), fecha_ajuste: axISO(c.au.fechaAjuste),
+      fecha_base: axISO(c.pasos[c.pasos.length - 2].fecha), fecha_ajuste: axISO(c.au.fechaAjuste),
       icl_fecha_base: c.ini.fecha, icl_fecha_ajuste: c.fin.fecha,
       icl_inicial: c.ini.valor, icl_final: c.fin.valor, coeficiente: Number(c.coef.toFixed(6)),
       importe_anterior: c.anterior, importe_nuevo: c.nuevo, provisorio: c.provisorio,
