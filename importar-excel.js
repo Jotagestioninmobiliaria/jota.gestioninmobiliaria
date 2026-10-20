@@ -306,6 +306,7 @@ function axCambios(f, a, formato){
 // ---------- pantalla ----------
 async function axAbrirImportador(){
   currentView = 'importar';
+  axAncho();
   const main = document.getElementById('main');
   main.innerHTML = `
     <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start">

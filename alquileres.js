@@ -20,6 +20,14 @@ let axPeriodo = '', axTab = 'prop', axOpen = null, axBusqueda = '', axFiltroEtap
 let axSchemaOK = true, axICL = null, axICLError = null, axICLCargando = false;
 const axPartido = {}, axMsgEditado = {};
 
+// La vista ocupa el ancho de la pantalla (sin esto, en pantallas de 1366 px la lista se cortaba a la derecha)
+(function(){
+  const st = document.createElement('style');
+  st.textContent = '.main.ax-ancho{width:calc(100% - 220px);box-sizing:border-box;min-width:0}.ax-scroll{overflow-x:auto}';
+  document.head.appendChild(st);
+})();
+function axAncho(){ document.getElementById('main')?.classList.add('ax-ancho'); }
+
 // ---------- utilidades ----------
 function axH(s){ return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function axNorm(s){ return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase().replace(/\s+/g,' ').trim(); }
@@ -266,6 +274,7 @@ function axMensaje(a){
 
 // ---------- carga de datos ----------
 async function loadAlquileres(){
+  axAncho();
   if(!axPeriodo) axPeriodo = axHoyPeriodo();
   document.getElementById('main').innerHTML = '<div class="loading"><div class="spinner"></div><span>Cargando alquileres...</span></div>';
   const [r1, r2, r3, r4] = await Promise.all([
@@ -627,7 +636,7 @@ function axRenderICL(conAumento){
       ${axICLError ? `<span style="color:var(--red);margin-left:8px">No se pudo consultar el ICL del BCRA (${axH(axICLError)}). <a href="#" onclick="event.preventDefault();axICL=null;axCargarICL()">Reintentar</a></span>` : ''}
     </summary>
     <div style="font-size:11px;color:var(--text-3);margin:8px 0">Fuente: ICL oficial del BCRA. Coeficiente = ICL del día en que rige el aumento ÷ ICL del último aumento (o del inicio). Si rige del 1 al ${AX_DIA_LIMITE} se cobra proporcional este mes; si rige después del ${AX_DIA_LIMITE}, se cobra el mes siguiente con la diferencia. No se aplica a contratos FIJO, SIN CONTRATO ni en USD.</div>
-    <div class="table-wrap"><table style="table-layout:auto">
+    <div class="table-wrap ax-scroll"><table style="table-layout:auto">
       <thead><tr><th>Unidad</th><th>Período</th><th>ICL inicial</th><th>ICL final</th><th>Coeficiente</th><th>Anterior</th><th>Nuevo</th><th></th></tr></thead>
       <tbody>${rows}</tbody>
     </table></div>

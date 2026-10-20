@@ -711,6 +711,7 @@ async function init(){
 
 function setView(v){
   currentView = v;
+  document.getElementById("main").classList.toggle("ax-ancho", v === "alquileres2");
   document.querySelectorAll(".nav-item").forEach(el => el.classList.remove("active"));
   event.target.closest(".nav-item").classList.add("active");
   if(v === "alertas"){
