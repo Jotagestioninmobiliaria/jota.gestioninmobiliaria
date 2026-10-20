@@ -128,7 +128,15 @@ function axEtapa(p){
 
 // Monto del mes: si hay aumento confirmado y rige desde un día distinto del 1,
 // se cobra el mes partido (días con el importe anterior + días con el nuevo).
+// Monto del mes con IVA (si la unidad lo factura): el aumento se calcula sobre el neto
 function axCalculoMes(a){
+  const c = axCalculoMesNeto(a);
+  const pct = Number(a.iva_pct) || 0;
+  if(!(pct > 0)) return { ...c, base: c.total, iva: 0 };
+  const iva = Math.round(c.total * pct);
+  return { ...c, base: c.total, iva, ivaPct: pct, total: c.total + iva };
+}
+function axCalculoMesNeto(a){
   const aj = axAjusteDe(a.id), usd = axEsUSD(a);
   const actual = axImporte(a);
   if(!aj) return { total: actual, usd, lineas: null, aj: null };
@@ -197,14 +205,15 @@ function axLineasUnidad(a, conNombre){
     const d = c.diferencia;
     txt += `${titulo}${conNombre ? ':' : ''} ${axMonto(c.aj.importe_nuevo, usd)}.-\n`;
     txt += `Diferencia por el aumento desde el ${axFmtFecha(d.desde)} (${d.dias} días x ${axMonto(d.diario, usd)}): ${axMonto(d.monto, usd)}.-\n`;
-    txt += `Total ${axMonto(c.total, usd)}.-\n`;
+    txt += `Total ${axMonto(c.base, usd)}.-\n`;
   } else if(c.lineas){
     txt += `${titulo}:\n`;
     c.lineas.forEach(l => { txt += `  ${l.dias} días x ${axMonto(l.diario, usd)} = ${axMonto(l.subtotal, usd)}\n`; });
-    txt += `  Total ${axMonto(c.total, usd)}.-\n`;
+    txt += `  Total ${axMonto(c.base, usd)}.-\n`;
   } else {
-    txt += `${titulo}${conNombre ? ':' : ''} ${axMonto(c.total, usd)}.-\n`;
+    txt += `${titulo}${conNombre ? ':' : ''} ${axMonto(c.base, usd)}.-\n`;
   }
+  if(c.iva) txt += `IVA ${(c.ivaPct * 100).toLocaleString('es-AR')}%: ${axMonto(c.iva, usd)}.-\nTotal con IVA ${axMonto(c.total, usd)}.-\n`;
   return txt;
 }
 
@@ -213,7 +222,7 @@ function axBloquePago(unidades){
   const a = unidades[0], prop = axPropDe(a);
   const usd = axEsUSD(a);
   const total = unidades.reduce((s, x) => s + axCalculoMes(x).total, 0);
-  const honor = usd ? 0 : unidades.reduce((s, x) => s + axHonorarios(x, axCalculoMes(x).total), 0);
+  const honor = usd ? 0 : unidades.reduce((s, x) => s + axHonorarios(x, axCalculoMes(x).base), 0);
   const tieneBanco = prop && (prop.cbu || prop.nro_cuenta || prop.alias_mao);
   const banco = () => {
     let t = `Titular: ${prop.titular || prop.nombre}\n`;
@@ -523,7 +532,7 @@ function axRenderDetalle(a){
   const tel = axWAPhone(a.tel_inquilino);
   const msg = axMsgEditado[a.id] ?? axMensaje(a);
   const au = axAumentoCobro(a, axPeriodo);
-  const honor = usd ? 0 : axHonorarios(a, c.total);
+  const honor = usd ? 0 : axHonorarios(a, c.base);
   const linea = (k, v) => `<div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;padding:3px 0"><span style="color:var(--text-3)">${k}</span><span style="text-align:right">${v}</span></div>`;
   return `<div style="display:grid;grid-template-columns:1fr 1.3fr;gap:20px">
     <div>
@@ -533,7 +542,8 @@ function axRenderDetalle(a){
       ${c.aj && c.diasAnt > 0 ? `<label style="display:flex;gap:6px;align-items:center;font-size:12px;color:var(--text-2);margin:4px 0"><input type="checkbox" ${axPartido[a.id] !== false ? 'checked' : ''} onchange="axPartido[${a.id}]=this.checked;delete axMsgEditado[${a.id}];renderAlquileres()"> Mes partido (rige desde el día ${c.diasAnt + 1})</label>` : ''}
       ${c.diferencia ? linea(`Diferencia desde ${axFmtFecha(c.diferencia.desde)} (${c.diferencia.dias} días)`, axMonto(c.diferencia.monto, usd)) : ''}
       ${c.lineas ? c.lineas.map(l => linea(`${l.dias} días x ${axMonto(l.diario, usd)}`, axMonto(l.subtotal, usd))).join('') : ''}
-      ${linea('Total alquiler', `<b>${axMonto(c.total, usd)}</b>`)}
+      ${c.iva ? linea('Alquiler (neto)', axMonto(c.base, usd)) + linea(`IVA ${(c.ivaPct * 100).toLocaleString('es-AR')}%`, axMonto(c.iva, usd)) : ''}
+      ${linea(c.iva ? 'Total con IVA' : 'Total alquiler', `<b>${axMonto(c.total, usd)}</b>`)}
       ${honor ? linea('Honorarios MAO', axPesos(honor)) : ''}
       <div style="font-size:11px;font-weight:500;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;margin:12px 0 6px">Datos</div>
       <div style="display:flex;gap:6px;align-items:center;font-size:12px;padding:3px 0">
@@ -805,7 +815,7 @@ const AX_EDIT = [
   ['cobra', 'Cobra', 'text'], ['inicio_contrato', 'Inicio contrato', 'date'], ['fin_contrato', 'Fin contrato', 'date'],
   ['tipo_contrato', 'Tipo de contrato', ['TRIMESTRAL','CUATRIMESTRAL','SEMESTRAL','FIJO','SIN CONTRATO']],
   ['ajuste', 'Índice de ajuste', ['ICL','IPC']], ['mes_aumento', 'Mes aumento (texto)', 'text'], ['fecha_ultimo_ajuste', 'Último aumento aplicado', 'date'],
-  ['moneda', 'Moneda', ['ARS','USD']], ['alq_inicial', 'Alquiler inicial', 'number'], ['alq_actual', 'Alquiler actual ($)', 'number'],
+  ['moneda', 'Moneda', ['ARS','USD']], ['iva_pct', 'IVA (se suma al alquiler)', ['21%','10,5%']], ['alq_inicial', 'Alquiler inicial', 'number'], ['alq_actual', 'Alquiler actual ($)', 'number'],
   ['alq_actual_usd', 'Alquiler actual (USD)', 'number'], ['comision_pct', 'Comisión MAO (%)', 'number'],
 ];
 function axFechaParaInput(v){ return axISO(axParseFecha(v)) || ''; }
@@ -826,6 +836,7 @@ function axEditarUnidad(id){
     if(tipo === 'date') v = axFechaParaInput(v);
     if(k === 'tipo_contrato') v = axTipoContrato(a);
     if(k === 'moneda') v = axEsUSD(a) ? 'USD' : 'ARS';
+    if(k === 'iva_pct') v = Number(a.iva_pct) === 0.21 ? '21%' : Number(a.iva_pct) === 0.105 ? '10,5%' : '';
     const inp = Array.isArray(tipo)
       ? `<select id="ax-e-${k}" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-family:inherit;font-size:13px"><option value=""></option>${tipo.map(o => `<option ${o === v ? 'selected' : ''}>${o}</option>`).join('')}</select>`
       : `<input id="ax-e-${k}" type="${tipo}" value="${axH(v)}" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-family:inherit;font-size:13px;box-sizing:border-box">`;
@@ -852,6 +863,7 @@ async function axGuardarUnidad(id){
     else if(tipo === 'date') v = axFechaParaBase(v, k);
     else v = v === '' ? null : v;
     if(k === 'comision_pct' && v !== null) v = v / 100;
+    if(k === 'iva_pct') v = v === '21%' ? 0.21 : v === '10,5%' ? 0.105 : null;
     const antes = a[k] ?? null;
     if(String(antes ?? '') !== String(v ?? '')) upd[k] = v;
   });

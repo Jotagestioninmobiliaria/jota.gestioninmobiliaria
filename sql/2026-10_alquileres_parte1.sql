@@ -73,3 +73,6 @@ grant execute on function keep_alive() to anon, authenticated;
 
 -- ---------- unidades que salen del listado (sin borrarlas) ----------
 alter table alquileres add column if not exists activo boolean not null default true;
+
+-- ---------- IVA que se suma al alquiler (oficinas/cocheras facturadas con IVA) ----------
+alter table alquileres add column if not exists iva_pct numeric;  -- 0.21 = 21%; vacío = sin IVA
