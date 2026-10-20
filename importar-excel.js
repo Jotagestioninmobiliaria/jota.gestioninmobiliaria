@@ -129,6 +129,7 @@ const AX_CORRECCIONES = [
   { edificio: 'ITUZAINGO 654', unidad: 'SS EE 31', nota: 'Cochera de Pagliero: $160.000 desde noviembre 2026', set: { alq_actual: 160000 } },
   { edificio: 'ENTRE RIOS 637', unidad: 'EE 04', nota: 'Desde noviembre 2026 la alquila Galazzo Agustín (inquilino del 9 B) a $130.000',
     set: { inquilino: 'Galazzo Agustin', tel_inquilino: '3364565090', email_inquilino: 'agustin.galazzo@hotmail.com', alq_actual: 130000 } },
+  { edificio: 'ITUZAINGO 654', unidad: 'PANADERIA', nota: 'Alquiler actualizado en octubre 2026 a $2.252.255', set: { alq_actual: 2252255 } },
   { edificio: 'BALCARCE 45 BIS', unidad: '2-A', nota: 'Extensión de contrato hasta el 31/10/2026 a $570.000 (precio acordado con el dueño)', set: { fin: '2026-10-31', alq_actual: 570000 } },
   { edificio: 'ITUZAINGO 654', unidad: '7-1 + EE 29', nota: 'Propietario DB+GB', set: { propietario: 'DB+GB' } },
   { edificio: 'ITUZAINGO 654', unidad: 'SS EE M3', nota: 'Desocupada: se quita el inquilino (Vaccaro Lumina)', vaciar: true },
