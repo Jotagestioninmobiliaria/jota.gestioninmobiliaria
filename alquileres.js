@@ -387,10 +387,14 @@ function axCalculoICL(a){
 function axUnidadesTab(tab){ return axAlq.filter(a => a.activo !== false && !axEsHija(a) && axTabDe(a) === tab); }
 
 function axTotales(lista){
-  const t = { ars: 0, usd: 0, cobArs: 0, cobUsd: 0, n: 0, etapas: { sin_avisar: 0, avisado: 0, pagado: 0, rendido: 0 } };
+  const t = { ars: 0, usd: 0, cobArs: 0, cobUsd: 0, hon: 0, honCob: 0, n: 0, etapas: { sin_avisar: 0, avisado: 0, pagado: 0, rendido: 0 } };
   lista.forEach(a => {
     const p = axPagoDe(a.id), e = axEtapa(p), usd = axEsUSD(a);
-    const monto = axCalculoMes(a).total;
+    const c = axCalculoMes(a), monto = c.total;
+    // Honorarios MAO del mes (sobre el neto, en pesos)
+    const hon = usd ? 0 : axHonorarios(a, c.base);
+    t.hon += hon;
+    if(e === 'pagado' || e === 'rendido') t.honCob += hon;
     t.n++; t.etapas[e] = (t.etapas[e] || 0) + 1;
     if(usd) t.usd += monto; else t.ars += monto;
     if(e === 'pagado' || e === 'rendido'){
@@ -403,7 +407,8 @@ function axTotales(lista){
 function axTotalesHTML(t){
   const usd = t.usd > 0 || t.cobUsd > 0;
   return `<span>Esperado <b>${axPesos(t.ars)}</b>${usd ? ` + <b>${axUSD(t.usd)}</b>` : ''}</span>
-    <span style="margin-left:12px">Cobrado <b style="color:var(--green)">${axPesos(t.cobArs)}</b>${usd ? ` + <b style="color:var(--green)">${axUSD(t.cobUsd)}</b>` : ''}</span>`;
+    <span style="margin-left:12px">Cobrado <b style="color:var(--green)">${axPesos(t.cobArs)}</b>${usd ? ` + <b style="color:var(--green)">${axUSD(t.cobUsd)}</b>` : ''}</span>
+    ${t.hon ? `<span style="margin-left:12px">Honorarios <b style="color:var(--blue)">${axPesos(t.honCob)}</b> de ${axPesos(t.hon)}</span>` : ''}`;
 }
 
 function axFiltrar(lista){
@@ -450,13 +455,14 @@ function renderAlquileres(){
       ${[['db','DB'],['dbgb','DB + GB'],['prop','Propietarios']].map(([k,l]) => `
         <button onclick="axTab='${k}';axOpen=null;renderAlquileres()" style="padding:10px 18px;border:none;background:none;cursor:pointer;font-family:inherit;font-size:14px;font-weight:${axTab===k?600:400};color:${axTab===k?'var(--text)':'var(--text-3)'};border-bottom:2px solid ${axTab===k?'var(--accent)':'transparent'};margin-bottom:-1px">${l} <span style="font-size:11px;color:var(--text-3)">${cuenta(k)}</span></button>`).join('')}
     </div>
-    <div class="stats" style="grid-template-columns:repeat(6,1fr)">
+    <div class="stats" style="grid-template-columns:repeat(7,1fr)">
       <div class="stat-card"><div class="stat-label">Unidades</div><div class="stat-value">${tot.n}</div></div>
       <div class="stat-card"><div class="stat-label">Sin avisar</div><div class="stat-value">${tot.etapas.sin_avisar}</div></div>
       <div class="stat-card" style="background:${AX_ETAPAS.avisado.bg}"><div class="stat-label">Avisados</div><div class="stat-value">${tot.etapas.avisado}</div></div>
       <div class="stat-card" style="background:${AX_ETAPAS.pagado.bg}"><div class="stat-label">Pagados</div><div class="stat-value green">${tot.etapas.pagado}</div></div>
       <div class="stat-card"><div class="stat-label">Esperado</div><div class="stat-value" style="font-size:14px">${axPesos(tot.ars)}${tot.usd ? `<br>${axUSD(tot.usd)}` : ''}</div></div>
       <div class="stat-card"><div class="stat-label">Cobrado</div><div class="stat-value green" style="font-size:14px">${axPesos(tot.cobArs)}${tot.usd ? `<br>${axUSD(tot.cobUsd)}` : ''}</div></div>
+      <div class="stat-card" style="background:var(--blue-bg)" title="Honorarios de MAO del mes: cobrados (de los alquileres pagados) / total esperado"><div class="stat-label">Honorarios MAO</div><div class="stat-value" style="font-size:14px;color:var(--blue)">${axPesos(tot.honCob)}<div style="font-size:11px;font-weight:400;color:var(--text-2)">de ${axPesos(tot.hon)}</div></div></div>
     </div>
     ${axRenderICL(conAumento)}
     <div class="toolbar" style="flex-wrap:wrap">
