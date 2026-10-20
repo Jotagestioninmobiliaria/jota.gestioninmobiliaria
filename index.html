@@ -950,6 +950,47 @@ function renderVendidas(list){
   </div>`;
 }
 
+// Recuadros de arriba: cada pantalla muestra su propio resumen
+function axStatsVenta(enVenta, vac, alq, hab, ingresos, totalVenta){
+  const card = (l, v, cls, small) => `<div class="stat-card"><div class="stat-label">${l}</div><div class="stat-value ${cls||''}"${small ? ' style="font-size:15px"' : ''}>${v}</div></div>`;
+  const usd = n => "USD " + Number(n).toLocaleString("es-AR");
+  if(currentView === "alquiladas"){
+    const lista = enVenta.filter(p => p.alquilado);
+    const exp = lista.reduce((a,p) => a + (Number(p.expensas)||0), 0);
+    return `<div class="stats" style="grid-template-columns:repeat(4,1fr)">
+      ${card("Alquiladas", lista.length)}
+      ${card("Alquiler mensual (ARS)", "$" + ingresos.toLocaleString("es-AR"), "accent", true)}
+      ${card("Expensas mensuales", "$" + exp.toLocaleString("es-AR"), "", true)}
+      ${card("Valor en venta", usd(lista.reduce((a,p) => a + (p.precio||0), 0)), "accent", true)}
+    </div>`;
+  }
+  if(currentView === "vendidas"){
+    const lista = props.filter(p => p.vendida);
+    const anio = new Date().getFullYear();
+    const delAnio = lista.filter(p => p.fecha_venta && new Date(p.fecha_venta).getFullYear() === anio);
+    return `<div class="stats" style="grid-template-columns:repeat(4,1fr)">
+      ${card("Vendidas", lista.length)}
+      ${card("Total vendido", usd(lista.reduce((a,p) => a + (p.precio_venta||0), 0)), "accent", true)}
+      ${card("Vendidas en " + anio, delAnio.length)}
+      ${card("Vendido en " + anio, usd(delAnio.reduce((a,p) => a + (p.precio_venta||0), 0)), "accent", true)}
+    </div>`;
+  }
+  if(currentView === "fueraventa"){
+    const lista = props.filter(p => p.fuera_venta && !p.vendida);
+    return `<div class="stats" style="grid-template-columns:repeat(2,1fr)">
+      ${card("Fuera de venta", lista.length)}
+      ${card("Valor (si vuelven a venta)", usd(lista.reduce((a,p) => a + (p.precio||0), 0)), "accent", true)}
+    </div>`;
+  }
+  return `<div class="stats" style="grid-template-columns:repeat(5,1fr)">
+      ${card("Total en venta", enVenta.length)}
+      ${card("Disponibles", vac, "green")}
+      ${card("Alquiladas", alq, "orange")}
+      ${card("Habitadas", hab, "blue")}
+      ${card("Valor total en venta", usd(totalVenta), "accent", true)}
+    </div>`;
+}
+
 function renderMain(){
   const vend = props.filter(p => p.vendida).length;
   const enVenta = props.filter(p => !p.vendida && !p.fuera_venta);
@@ -968,14 +1009,7 @@ function renderMain(){
       <h2>${titulo}</h2>
       <p>${new Date().toLocaleDateString("es-AR",{weekday:"long",year:"numeric",month:"long",day:"numeric"})}</p>
     </div>
-    <div class="stats">
-      <div class="stat-card"><div class="stat-label">Total</div><div class="stat-value">${enVenta.length}</div></div>
-      <div class="stat-card"><div class="stat-label">Disponibles</div><div class="stat-value green">${vac}</div></div>
-      <div class="stat-card"><div class="stat-label">Alquiladas</div><div class="stat-value orange">${alq}</div></div>
-      <div class="stat-card"><div class="stat-label">Habitadas</div><div class="stat-value blue">${hab}</div></div>
-      <div class="stat-card"><div class="stat-label">Ingresos/mes</div><div class="stat-value accent" style="font-size:15px">$${ingresos.toLocaleString("es-AR")}</div></div>
-      <div class="stat-card"><div class="stat-label">Total en venta</div><div class="stat-value accent" style="font-size:15px">USD ${totalVenta.toLocaleString("es-AR")}</div></div>
-    </div>
+    ${axStatsVenta(enVenta, vac, alq, hab, ingresos, totalVenta)}
     <div class="toolbar">
       <div class="search-wrap"><span class="search-icon">⌕</span><input placeholder="Buscar dirección, barrio, inquilino..." value="${search}" oninput="search=this.value;renderMain()"></div>
       <select class="filter-select" onchange="fTipo=this.value;renderMain()">
