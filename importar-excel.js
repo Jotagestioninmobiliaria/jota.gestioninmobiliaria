@@ -122,6 +122,7 @@ const AX_CORRECCIONES = [
     set: { inquilino: 'Carla Maggi', tel_inquilino: null, email_inquilino: null, inicio: '2026-10-16', fin: '2028-10-15', tipo_contrato: 'TRIMESTRAL', periodicidad: 3,
            mes_aumento: 'ENERO-ABRIL-JULIO-OCTUBRE', alq_inicial: 1550000, alq_actual: 1550000 } },
   { edificio: 'ITUZAINGO 654', unidad: 'AUDITORIO + EE 03', nota: 'Paga $2.546.841,88', set: { alq_actual: 2546841.88 } },
+  { edificio: 'ITUZAINGO 654', unidad: 'SS BICICLETERO 1', nota: 'Desocupado: Mariano Echeverría lo alquiló hasta septiembre 2026', set: { inquilino: null, cobra: null, alq_actual: 0 }, vaciar: true },
   { edificio: 'BALCARCE 45 BIS', unidad: '2-A', nota: 'Extensión de contrato hasta el 31/10/2026 a $570.000 (precio acordado con el dueño)', set: { fin: '2026-10-31', alq_actual: 570000 } },
   { edificio: 'ITUZAINGO 654', unidad: '7-1 + EE 29', nota: 'Propietario DB+GB', set: { propietario: 'DB+GB' } },
   { edificio: 'ITUZAINGO 654', unidad: 'SS EE M3', nota: 'Desocupada: se quita el inquilino (Vaccaro Lumina)', vaciar: true },
