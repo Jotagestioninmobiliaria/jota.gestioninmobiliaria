@@ -592,6 +592,7 @@ async function checkAjustesAutomaticos(){
   const iclValor = iclData?.icl;
 
   const modal = document.createElement("div");
+  modal.id = "icl-auto-modal";
   modal.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:999";
   
   const tarjetas = ajustesHoy.map(p => {
@@ -653,12 +654,12 @@ async function aplicarICLManual(ids){
   const icl = parseFloat(btn?.dataset.icl);
   if(!icl) return;
   if(!confirm(`¿Aplicar ajuste ICL ${icl} a ${ids.length} propiedad${ids.length!==1?"es":""}?`)) return;
-  document.querySelector("div[style*='position:fixed'][style*='z-index:999']")?.remove();
+  document.getElementById("icl-auto-modal")?.remove();
   await aplicarTodosAjustes(ids, icl);
 }
 
 async function aplicarTodosAjustes(ids, icl){
-  document.querySelector("div[style*='position:fixed'][style*='z-index:999']")?.remove();
+  document.getElementById("icl-auto-modal")?.remove();
   let aplicados = 0;
   for(const id of ids){
     const p = props.find(x => x.id === id);
@@ -1340,7 +1341,9 @@ function marcarVendidaModal(id){
   const p = props.find(x => x.id === id);
   if(!p) return;
   const hoy = new Date().toISOString().split("T")[0];
+  document.getElementById("mv-modal")?.remove();
   const modal = document.createElement("div");
+  modal.id = "mv-modal";
   modal.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:9999";
   modal.innerHTML = `
     <div style="background:var(--surface);border-radius:var(--radius);padding:28px;width:380px;box-shadow:0 8px 32px rgba(0,0,0,.2)">
@@ -1361,7 +1364,7 @@ function marcarVendidaModal(id){
 async function confirmarVendida(id){
   const fecha = document.getElementById("mv-fecha")?.value;
   const precio = Number(document.getElementById("mv-precio")?.value) || 0;
-  document.querySelector("div[style*='position:fixed'][style*='z-index:9999']")?.remove();
+  document.getElementById("mv-modal")?.remove();
   const { error } = await db.from("propiedades").update({ vendida: true, fecha_venta: fecha || null, precio_venta: precio || null }).eq("id", id);
   if(error){ showToast("Error: " + error.message); return; }
   const { data: fresh } = await db.from("propiedades").select("*").order("id");
