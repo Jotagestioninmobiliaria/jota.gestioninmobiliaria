@@ -134,6 +134,7 @@ const AX_CORRECCIONES = [
   { edificio: 'ITUZAINGO 654', unidad: 'PANADERIA', nota: 'Desde octubre 2026: $2.252.255, ajuste cuatrimestral por IPC hasta el 31/05/2027',
     set: { alq_actual: 2252255, alq_inicial: 2252255, inicio: '2026-10-01', fin: '2027-05-31', tipo_contrato: 'CUATRIMESTRAL', periodicidad: 4, mes_aumento: 'FEBRERO-JUNIO-OCTUBRE', ajuste: 'IPC' } },
   { edificio: 'ENTRE RIOS 637', unidad: '3-C', nota: 'Ajusta por IPC (semestral); $609.713 acordado con la dueña', set: { ajuste: 'IPC' } },
+  { edificio: 'ITUZAINGO 654', unidad: '03-07', nota: 'Juan Palmitesta está en el piso 3 dpto 4 (la 3-7 se vendió); en la base se llama "3-4"', base: 'ITUZAINGO 654 3-4' },
   { edificio: 'BALCARCE 45 BIS', unidad: '2-A', nota: 'Extensión de contrato hasta el 31/10/2026 a $570.000 (precio acordado con el dueño)', set: { fin: '2026-10-31', alq_actual: 570000 } },
   { edificio: 'ITUZAINGO 654', unidad: '7-1 + EE 29', nota: 'Propietario DB+GB', set: { propietario: 'DB+GB' } },
   { edificio: 'ITUZAINGO 654', unidad: 'SS EE M3', nota: 'Desocupada: se quita el inquilino (Vaccaro Lumina)', vaciar: true },
