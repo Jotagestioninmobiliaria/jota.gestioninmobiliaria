@@ -107,6 +107,10 @@ const AX_CORRECCIONES = [
   { edificio: 'BELGRANO 766', unidad: 'P6', nota: 'Alquiler actual $1.050.000 (igual al inicial)', set: { alq_actual: 1050000 } },
   { edificio: 'BALCARCE 45 BIS', unidad: '2-A', nota: 'El contrato vence el 31/10/2026', set: { fin: '2026-10-31' } },
   { edificio: 'ITUZAINGO 654', unidad: '7-1 + EE 29', nota: 'Propietario DB+GB', set: { propietario: 'DB+GB' } },
+  { edificio: 'ITUZAINGO 654', unidad: 'SS EE M3', nota: 'Desocupada: se quita el inquilino (Vaccaro Lumina)', vaciar: true },
+  { edificio: '9 DE JULIO 2233', unidad: '2', nota: 'Desocupada: se quita el inquilino (Joaquín Fernández)', vaciar: true },
+  { edificio: 'JUJUY 1515', unidad: 'EE M 3', nota: 'Desocupada: se quita el inquilino (Ricardo)', vaciar: true },
+  { edificio: 'MENDOZA 2267', unidad: 'MENDOZA 2267', nota: 'Alquiler en USD 3.500 (se saca el "$3.500" en pesos)', vaciar: true },
   { edificio: 'AMENABAR 1941', unidad: null, nota: 'En venta: no se importa', omitir: true },
   { edificio: 'FIHSERTON GOLF', unidad: 'EE 1', nota: 'Incluida en el alquiler del U2 P1-A', padre: 'U2 P1-A' },
   { edificio: 'FIHSERTON GOLF', unidad: 'EE 2', nota: 'Incluida en el alquiler del U2 P1-A', padre: 'U2 P1-A' },
@@ -132,6 +136,7 @@ function axAplicarCorrecciones(filas){
       if(c.set) Object.assign(f, c.set);
       if(c.base){ f.baseUnidad = c.base; f.renombrar = c.renombrar || null; }
       if(c.omitir) f.omitir = true;
+      if(c.vaciar) f.vaciar = true;
       if(c.sinAumentosIncluidos) f.sinAumentosIncluidos = true;
       if(c.padre){
         const p = filas.find(x => igual(x, f.edificio, c.padre));
