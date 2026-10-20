@@ -483,6 +483,8 @@ async function axAplicarImport(){
   }
   const idProp = n => axResolverProp(n, props, axImp.alqs);
   const tieneDireccion = axImp.alqs.some(a => 'direccion' in a);
+  // La tabla alquileres no genera el id sola: se usa el siguiente al más alto
+  let proximoId = Math.max(0, ...axImp.alqs.map(a => Number(a.id) || 0)) + 1;
   let ok = 0, err = 0;
   const idPorFila = Object.fromEntries(axImp.filas.filter(f => f.matchId).map(f => [f.fila, f.matchId]));
   for(const f of sel){
@@ -496,7 +498,7 @@ async function axAplicarImport(){
     let res;
     if(a) res = await db.from('alquileres').update(upd).eq('id', a.id);
     else {
-      res = await db.from('alquileres').insert({ unidad: f.unidad || f.edificio, ...(tieneDireccion ? { direccion: f.edificio } : {}), ...upd }).select().single();
+      res = await db.from('alquileres').insert({ id: proximoId++, unidad: [f.edificio, f.unidad].filter(Boolean).join(' '), ...(tieneDireccion ? { direccion: f.edificio } : {}), ...upd }).select().single();
       if(!res.error && res.data) idPorFila[f.fila] = res.data.id;
     }
     if(res.error){ err++; escribir(`❌ Fila ${f.fila} (${axH(f.edificio)} ${axH(f.unidad)}): ${axH(res.error.message)}`, true); }
