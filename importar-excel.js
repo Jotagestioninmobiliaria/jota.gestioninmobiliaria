@@ -90,6 +90,8 @@ function axLeerHoja(ws){
     });
   }
   axAplicarCorrecciones(filas);
+  // DB y DB+GB: la comisión de MAO es 5% (el Excel tenía 4%)
+  filas.forEach(f => { if(['DB','DB+GB'].includes(axNorm(f.propietario).replace(/\s/g,'')) && f.comision_pct === 0.04) f.comision_pct = 0.05; });
   return { filas, ignoradas };
 }
 
