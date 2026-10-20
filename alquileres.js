@@ -70,7 +70,8 @@ function axImporte(a){ return Number(axEsUSD(a) ? a.alq_actual_usd : a.alq_actua
 // En la base algunas unidades combinadas tienen parent_id = su propio id: no son "hijas"
 function axEsHija(a){ return !!a.parent_id && a.parent_id !== a.id; }
 function axActiva(a){ return a.activo !== false && !axEsHija(a) && !!(a.inquilino || '').trim() && axImporte(a) > 0; }
-function axTabDe(a){ const p = axNorm(a.propietario).replace(/\s/g,''); return (p === 'DB' || p === 'DB+GB') ? 'dbgb' : 'prop'; }
+// Pestañas: DB (Diego Baroffi), DB+GB y el resto de los propietarios
+function axTabDe(a){ const p = axNorm(a.propietario).replace(/\s/g,''); return p === 'DB' ? 'db' : p === 'DB+GB' ? 'dbgb' : 'prop'; }
 function axSinICL(a){ const t = axTipoContrato(a); return t === 'FIJO' || t === 'SIN CONTRATO' || axEsUSD(a); }
 // Índice de ajuste (columna "ajuste"): ICL por defecto; IPC se avisa pero no se calcula
 function axIndice(a){ return axNorm(a.ajuste) === 'IPC' ? 'IPC' : 'ICL'; }
@@ -446,7 +447,7 @@ function renderAlquileres(){
     ${!axSchemaOK ? `<div style="background:var(--red-bg);color:var(--red);border-radius:var(--radius);padding:12px 16px;margin-bottom:16px;font-size:13px">
       ⚠ Falta preparar la base de datos: corré el script <b>sql/2026-10_alquileres_parte1.sql</b> en Supabase → SQL Editor. Hasta entonces no se pueden guardar avisos ni aumentos.</div>` : ''}
     <div style="display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:16px">
-      ${[['dbgb','DB / GB'],['prop','Propietarios']].map(([k,l]) => `
+      ${[['db','DB'],['dbgb','DB + GB'],['prop','Propietarios']].map(([k,l]) => `
         <button onclick="axTab='${k}';axOpen=null;renderAlquileres()" style="padding:10px 18px;border:none;background:none;cursor:pointer;font-family:inherit;font-size:14px;font-weight:${axTab===k?600:400};color:${axTab===k?'var(--text)':'var(--text-3)'};border-bottom:2px solid ${axTab===k?'var(--accent)':'transparent'};margin-bottom:-1px">${l} <span style="font-size:11px;color:var(--text-3)">${cuenta(k)}</span></button>`).join('')}
     </div>
     <div class="stats" style="grid-template-columns:repeat(6,1fr)">
@@ -486,7 +487,7 @@ function axRenderGrupos(orden, grupos){
     const items = grupos[prop];
     const t = axTotales(items);
     const p = axPropDe(items[0]);
-    const faltaPago = axTab === 'dbgb' && !(p && p.datos_pago_wa);
+    const faltaPago = axTab !== 'prop' && !(p && (p.datos_pago_wa || p.cbu || p.nro_cuenta || p.alias_mao));
     return `<div class="group-section" style="margin-bottom:18px">
       <div class="group-header" style="flex-wrap:wrap">
         <span class="group-title">${axH(prop)}</span>

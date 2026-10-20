@@ -300,6 +300,13 @@ function axCambios(f, a, formato){
     const i = cambios.findIndex(c => c.col === 'alq_actual');
     if(i >= 0) vacia.push(cambios.splice(i, 1)[0]);
   }
+  // Si cambia el inquilino y el Excel no trae teléfono/mail, se borran los del inquilino anterior
+  // (si no, el WhatsApp le llegaría a la persona equivocada)
+  const ci = cambios.find(c => c.col === 'inquilino');
+  if(a && ci && ci.antes && axCompact(ci.antes) !== axCompact(ci.nuevo)){
+    if(!f.tel_inquilino && a.tel_inquilino) cambios.push({ col: 'tel_inquilino', antes: a.tel_inquilino, nuevo: null, texto: 'se borra (era del inquilino anterior)' });
+    if(!f.email_inquilino && a.email_inquilino) cambios.push({ col: 'email_inquilino', antes: a.email_inquilino, nuevo: null, texto: 'se borra (era del inquilino anterior)' });
+  }
   return { cambios, vacia };
 }
 
@@ -373,7 +380,7 @@ function axRenderImport(){
   const res = {};
   filas.filter(f => !f.omitir).forEach(f => {
     const x = axComoAlquiler(f);
-    const tab = !f.propietario ? 'Sin propietario' : axTabDe(x) === 'dbgb' ? 'DB / GB' : 'Propietarios';
+    const tab = !f.propietario ? 'Sin propietario' : ({ db: 'DB', dbgb: 'DB + GB', prop: 'Propietarios' })[axTabDe(x)];
     const k = `${tab}|${f.propietario || '(sin propietario)'}`;
     const r = res[k] = res[k] || { tab, prop: f.propietario || '(sin propietario)', act: 0, vac: 0, ars: 0, usd: 0 };
     if(axActiva(x)){ r.act++; if(f.moneda === 'USD') r.usd += f.alq_usd; else r.ars += f.alq_actual; } else r.vac++;
