@@ -226,7 +226,7 @@
         <span class="nav-icon">🏆</span> Vendidas
       </div>
       <div class="nav-item" id="nav-alquiladas" onclick="setView('alquiladas')">
-        <span class="nav-icon">📋</span> Alquiladas
+        <span class="nav-icon">📋</span> En venta alquiladas
       </div>
       <div class="nav-item" id="nav-alquileres2" onclick="setView('alquileres2')">
         <span class="nav-icon">🗓</span> Alquileres
@@ -954,7 +954,7 @@ function renderMain(){
   const list = filtered();
   const isAlq = currentView === "alquiladas";
   const isVend = currentView === "vendidas";
-  const titulo = isAlq ? "Unidades Alquiladas" : isVend ? "Propiedades Vendidas" : "Propiedades en Venta";
+  const titulo = isAlq ? "En venta alquiladas" : isVend ? "Propiedades Vendidas" : "Propiedades en Venta";
 
   document.getElementById("main").innerHTML = `
     <div class="page-header">
