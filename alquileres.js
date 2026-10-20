@@ -69,7 +69,9 @@ function axIndice(a){ return axNorm(a.ajuste) === 'IPC' ? 'IPC' : 'ICL'; }
 function axEdificio(a){ return a.edificio || a.direccion || ''; }
 function axNombreUnidad(a){
   const ed = axEdificio(a), un = a.unidad || '';
-  if(!ed || axCompact(un).includes(axCompact(ed))) return un || ed;
+  // Si la unidad ya trae la calle (ej. "ITUZAINGO 652 AUDITORIO"), no se repite el edificio
+  const calle = axCompact(ed.replace(/\d+/g, ''));
+  if(!ed || axCompact(un).includes(axCompact(ed)) || (calle && axCompact(un).replace(/ITUZANGO/g, 'ITUZAINGO').includes(calle))) return un || ed;
   return `${ed} · ${un}`;
 }
 
@@ -363,7 +365,9 @@ function axCalculoICL(a){
   const cargado = axImporte(a);
   return {
     au, pasos, ini: prev.icl, fin: ult.icl, coef: ult.icl.valor / prev.icl.valor,
-    anterior: prev.monto, nuevo: ult.monto, provisorio: !ult.icl.exacto,
+    // "Anterior" es lo que el inquilino paga hoy (puede ser un monto acordado); el nuevo sale del ICL
+    anterior: cargado > 0 ? cargado : prev.monto, nuevo: ult.monto, provisorio: !ult.icl.exacto,
+    anteriorICL: prev.monto,
     // El monto cargado no coincide con el que corresponde al período anterior según ICL
     distinto: Math.abs(cargado - prev.monto) > 1 ? cargado : null,
   };
@@ -607,7 +611,7 @@ function axRenderICL(conAumento){
       const pasosTxt = c.pasos.map(p => `${axFmtFecha(p.fecha)}: ICL ${p.icl.valor.toFixed(2)} → ${axPesos(p.monto)}`).join('\n');
       cols = `<td ${td} title="${axH('Cálculo desde el inicio (como el COCIR):\n' + pasosTxt)}">${axFmtFecha(c.pasos[c.pasos.length - 2].fecha)} → ${axFmtFecha(au.fechaAjuste)}
           <div style="font-size:10px;color:var(--text-3)">${c.pasos.length - 1}° aumento desde ${axFmtFecha(c.pasos[0].fecha)} ($${Number(a.alq_inicial).toLocaleString('es-AR')})</div>
-          ${c.distinto !== null ? `<div style="font-size:10px;color:var(--orange)">⚠ cargado ${axPesos(c.distinto)}; según ICL el período anterior era ${axPesos(c.anterior)}</div>` : ''}</td>
+          ${c.distinto !== null ? `<div style="font-size:10px;color:var(--orange)">⚠ cargado ${axPesos(c.distinto)}; según ICL el período anterior era ${axPesos(c.anteriorICL)}</div>` : ''}</td>
         <td ${td} title="ICL del ${c.ini.fecha}">${c.ini.valor.toFixed(2)}</td>
         <td ${td} title="ICL del ${c.fin.fecha}">${c.fin.valor.toFixed(2)}${c.provisorio ? `<div style="font-size:10px;color:var(--orange)">provisorio: último publicado ${axFmtFecha(axParseFecha(c.fin.fecha))}</div>` : ''}</td>
         <td ${td}><b>${c.coef.toFixed(4)}</b> <span style="color:var(--text-3)">(+${((c.coef - 1) * 100).toFixed(2)}%)</span></td>
