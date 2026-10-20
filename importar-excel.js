@@ -24,9 +24,9 @@ const AX_CAMPOS = [
   ['tel_inquilino','tel_inquilino'], ['email_inquilino','email_inquilino'], ['adm_email','adm_contacto'], ['adm_telefono','tel_adm'],
   ['seguro','seguro'], ['tgi_cuenta','tgi_cuenta'], ['tgi_gestion','tgi_gestion'], ['api','api'], ['aguas','aguas'],
   ['gas_cliente','gas_cliente'], ['gas_persona','gas_persona'], ['epe_cliente','epe_cliente'], ['epe_plan','epe_plan'],
-  ['ultimo_ajuste','fecha_ultimo_ajuste'],
+  ['ultimo_ajuste','fecha_ultimo_ajuste'], ['iva_pct','iva_pct'],
 ];
-const AX_NUMERICOS = new Set(['alq_inicial','alq_actual','alq_actual_usd','comision_pct','comision_adm','comision_db','expensas_monto','periodicidad_meses']);
+const AX_NUMERICOS = new Set(['iva_pct','alq_inicial','alq_actual','alq_actual_usd','comision_pct','comision_adm','comision_db','expensas_monto','periodicidad_meses']);
 
 function axCelda(v){
   if(v === null || v === undefined) return null;
@@ -115,13 +115,16 @@ const AX_CORRECCIONES = [
   { edificio: 'ENTRE RIOS 637', unidad: '9 B', nota: 'Paga $516,061'.replace(/,/g, '.') + ' (el Excel estaba atrasado)', set: { alq_actual: 516061 } },
   { edificio: 'SANTA FE 2833', unidad: '9-A', nota: 'Paga $871,977'.replace(/,/g, '.') + ' (el Excel estaba atrasado)', set: { alq_actual: 871977 } },
   { edificio: 'PJE SANTA CRUZ', unidad: 'PJE SANTA CRUZ', nota: 'Paga $466,118'.replace(/,/g, '.') + ' (el Excel estaba atrasado)', set: { alq_actual: 466118 } },
-  { edificio: 'BALCARCE 45 BIS', unidad: 'BALCARCE 45 BIS', nota: 'Paga $4,355,637'.replace(/,/g, '.') + ' (el Excel estaba atrasado)', set: { alq_actual: 4355637 } },
+  { edificio: 'BALCARCE 45 BIS', unidad: 'BALCARCE 45 BIS', nota: 'Paga $4.355.637 + IVA 21% (el Excel estaba atrasado)', set: { alq_actual: 4355637, iva_pct: 0.21 } },
   { edificio: 'ENTRE RIOS 637', unidad: '2-C', nota: 'Paga $499,854'.replace(/,/g, '.') + ' (el Excel estaba atrasado)', set: { alq_actual: 499854 } },
   { edificio: 'ITUZAINGO 654', unidad: '3-1', nota: 'Paga $615.776', set: { alq_actual: 615776 } },
   { edificio: 'ITUZAINGO 654', unidad: '7-3', nota: 'Inquilina nueva Carla Maggi desde el 16/10/2026 (vence 15/10/2028), trimestral ICL, inicial $1.550.000',
     set: { inquilino: 'Carla Maggi', tel_inquilino: null, email_inquilino: null, inicio: '2026-10-16', fin: '2028-10-15', tipo_contrato: 'TRIMESTRAL', periodicidad: 3,
            mes_aumento: 'ENERO-ABRIL-JULIO-OCTUBRE', alq_inicial: 1550000, alq_actual: 1550000 } },
-  { edificio: 'ITUZAINGO 654', unidad: 'AUDITORIO + EE 03', nota: 'Paga $2.546.841,88', set: { alq_actual: 2546841.88 } },
+  { edificio: 'ITUZAINGO 654', unidad: 'AUDITORIO + EE 03', nota: 'Sensimat: $2.104.828 + IVA 21% (factura $2.546.841,88)', set: { inquilino: 'Sensimat', alq_actual: 2104828, iva_pct: 0.21 } },
+  { edificio: 'ITUZAINGO 654', unidad: 'SS EE 04', nota: 'Sensimat: $160.000 + IVA 21%', set: { inquilino: 'Sensimat', iva_pct: 0.21 } },
+  { edificio: 'ITUZAINGO 654', unidad: 'SS EE 22', nota: 'Sensimat: $160.000 + IVA 21%', set: { inquilino: 'Sensimat', iva_pct: 0.21 } },
+  { edificio: 'ITUZAINGO 654', unidad: 'SS EE 23', nota: 'Sensimat: $160.000 + IVA 21%', set: { inquilino: 'Sensimat', iva_pct: 0.21 } },
   { edificio: 'ITUZAINGO 654', unidad: 'SS BICICLETERO 1', nota: 'Desocupado: Mariano Echeverría lo alquiló hasta septiembre 2026', set: { inquilino: null, cobra: null, alq_actual: 0 }, vaciar: true },
   { edificio: 'BALCARCE 45 BIS', unidad: '2-A', nota: 'Extensión de contrato hasta el 31/10/2026 a $570.000 (precio acordado con el dueño)', set: { fin: '2026-10-31', alq_actual: 570000 } },
   { edificio: 'ITUZAINGO 654', unidad: '7-1 + EE 29', nota: 'Propietario DB+GB', set: { propietario: 'DB+GB' } },
