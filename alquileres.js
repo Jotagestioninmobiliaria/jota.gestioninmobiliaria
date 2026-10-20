@@ -176,7 +176,7 @@ function axHonorarios(a, total){
 
 function axWAPhone(t){
   if(!t) return '';
-  let n = String(t).replace(/\D/g,'');
+  let n = String(t).trim().replace(/\.0+$/, '').replace(/\D/g,''); // Excel a veces guarda "3415551234.0"
   if(n.startsWith('549') && n.length === 13) return n;
   if(n.startsWith('54')) n = n.substring(2);
   if(n.startsWith('0')) n = n.substring(1);
