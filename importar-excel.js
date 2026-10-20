@@ -24,7 +24,7 @@ const AX_CAMPOS = [
   ['tel_inquilino','tel_inquilino'], ['email_inquilino','email_inquilino'], ['adm_email','adm_contacto'], ['adm_telefono','tel_adm'],
   ['seguro','seguro'], ['tgi_cuenta','tgi_cuenta'], ['tgi_gestion','tgi_gestion'], ['api','api'], ['aguas','aguas'],
   ['gas_cliente','gas_cliente'], ['gas_persona','gas_persona'], ['epe_cliente','epe_cliente'], ['epe_plan','epe_plan'],
-  ['ultimo_ajuste','fecha_ultimo_ajuste'], ['iva_pct','iva_pct'],
+  ['ultimo_ajuste','fecha_ultimo_ajuste'], ['iva_pct','iva_pct'], ['ajuste','ajuste'],
 ];
 const AX_NUMERICOS = new Set(['iva_pct','alq_inicial','alq_actual','alq_actual_usd','comision_pct','comision_adm','comision_db','expensas_monto','periodicidad_meses']);
 
@@ -129,7 +129,9 @@ const AX_CORRECCIONES = [
   { edificio: 'ITUZAINGO 654', unidad: 'SS EE 31', nota: 'Cochera de Pagliero: $160.000 desde noviembre 2026', set: { alq_actual: 160000 } },
   { edificio: 'ENTRE RIOS 637', unidad: 'EE 04', nota: 'Desde noviembre 2026 la alquila Galazzo Agustín (inquilino del 9 B) a $130.000',
     set: { inquilino: 'Galazzo Agustin', tel_inquilino: '3364565090', email_inquilino: 'agustin.galazzo@hotmail.com', alq_actual: 130000 } },
-  { edificio: 'ITUZAINGO 654', unidad: 'PANADERIA', nota: 'Alquiler actualizado en octubre 2026 a $2.252.255', set: { alq_actual: 2252255 } },
+  { edificio: 'ITUZAINGO 654', unidad: 'PANADERIA', nota: 'Desde octubre 2026: $2.252.255, ajuste cuatrimestral por IPC hasta el 31/05/2027',
+    set: { alq_actual: 2252255, alq_inicial: 2252255, inicio: '2026-10-01', fin: '2027-05-31', tipo_contrato: 'CUATRIMESTRAL', periodicidad: 4, mes_aumento: 'FEBRERO-JUNIO-OCTUBRE', ajuste: 'IPC' } },
+  { edificio: 'ENTRE RIOS 637', unidad: '3-C', nota: 'Ajusta por IPC (semestral); $609.713 acordado con la dueña', set: { ajuste: 'IPC' } },
   { edificio: 'BALCARCE 45 BIS', unidad: '2-A', nota: 'Extensión de contrato hasta el 31/10/2026 a $570.000 (precio acordado con el dueño)', set: { fin: '2026-10-31', alq_actual: 570000 } },
   { edificio: 'ITUZAINGO 654', unidad: '7-1 + EE 29', nota: 'Propietario DB+GB', set: { propietario: 'DB+GB' } },
   { edificio: 'ITUZAINGO 654', unidad: 'SS EE M3', nota: 'Desocupada: se quita el inquilino (Vaccaro Lumina)', vaciar: true },
