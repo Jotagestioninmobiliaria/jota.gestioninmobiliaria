@@ -70,3 +70,6 @@ language sql security definer set search_path = public as $$
 $$;
 revoke all on function keep_alive() from public;
 grant execute on function keep_alive() to anon, authenticated;
+
+-- ---------- unidades que salen del listado (sin borrarlas) ----------
+alter table alquileres add column if not exists activo boolean not null default true;

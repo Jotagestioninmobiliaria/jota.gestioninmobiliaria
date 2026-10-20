@@ -59,7 +59,7 @@ function axPeriodicidad(a){
 }
 function axEsUSD(a){ return a.moneda === 'USD' || (!(Number(a.alq_actual) > 0) && Number(a.alq_actual_usd) > 0); }
 function axImporte(a){ return Number(axEsUSD(a) ? a.alq_actual_usd : a.alq_actual) || 0; }
-function axActiva(a){ return !a.parent_id && !!(a.inquilino || '').trim() && axImporte(a) > 0; }
+function axActiva(a){ return a.activo !== false && !a.parent_id && !!(a.inquilino || '').trim() && axImporte(a) > 0; }
 function axTabDe(a){ const p = axNorm(a.propietario).replace(/\s/g,''); return (p === 'DB' || p === 'DB+GB') ? 'dbgb' : 'prop'; }
 function axSinICL(a){ const t = axTipoContrato(a); return t === 'FIJO' || t === 'SIN CONTRATO' || axEsUSD(a); }
 function axEdificio(a){ return a.edificio || a.direccion || ''; }
@@ -225,7 +225,7 @@ function axBloquePago(unidades){
       + `TOTAL a depositar a ${prop.titular || prop.nombre} ${axPesos(total - honor)}.-\n${banco()}`
       + `\nTOTAL a depositar a MAO Propiedades ${axPesos(honor)}.- (honorarios inmobiliarios)\n${AX_MAO_PAGO}\n`;
   }
-  if(axTabDe(a) === 'prop' && tieneBanco) return `\nTOTAL a depositar a ${prop.titular || prop.nombre} ${axMonto(total, usd)}.-\n${banco()}`;
+  if(tieneBanco) return `\nTOTAL a depositar a ${prop.titular || prop.nombre} ${axMonto(total, usd)}.-\n${banco()}`;
   if(axTabDe(a) === 'prop') return `\nTOTAL a abonar ${axMonto(total, usd)}.-\n${AX_MAO_PAGO}\n`;
   return `\nTOTAL a abonar ${axMonto(total, usd)}.-\n[Completar datos de pago de ${a.propietario || 'propietario'}]\n`;
 }
@@ -327,7 +327,7 @@ function axCalculoICL(a){
 }
 
 // ---------- render ----------
-function axUnidadesTab(tab){ return axAlq.filter(a => !a.parent_id && axTabDe(a) === tab); }
+function axUnidadesTab(tab){ return axAlq.filter(a => a.activo !== false && !a.parent_id && axTabDe(a) === tab); }
 
 function axTotales(lista){
   const t = { ars: 0, usd: 0, cobArs: 0, cobUsd: 0, n: 0, etapas: { sin_avisar: 0, avisado: 0, pagado: 0, rendido: 0 } };

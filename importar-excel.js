@@ -98,8 +98,10 @@ function axLeerHoja(ws){
 const AX_CORRECCIONES = [
   { edificio: 'SANTA FE 2833', unidad: '1-A + EE04', nota: 'Contrato renovado: 16/09/2026 al 15/09/2028, $650.000 inicial y actual',
     set: { inicio: '2026-09-16', fin: '2028-09-15', alq_inicial: 650000, alq_actual: 650000 } },
-  { edificio: 'ITALIA 1275', unidad: '5-D', nota: 'Es trimestral: aumenta en julio, octubre, enero y abril. Nunca se aumentó, se recalcula desde el inicio',
-    set: { tipo_contrato: 'TRIMESTRAL', periodicidad: 3, mes_aumento: 'JULIO-OCTUBRE-ENERO-ABRIL' }, sinAumentosIncluidos: true },
+  { edificio: 'ITALIA 1275', unidad: '5-D', nota: 'Trimestral (julio, octubre, enero, abril). Paga hoy $503.783 (con el aumento de julio); el de octubre va en noviembre con diferencia',
+    set: { tipo_contrato: 'TRIMESTRAL', periodicidad: 3, mes_aumento: 'JULIO-OCTUBRE-ENERO-ABRIL', alq_inicial: 450000, alq_actual: 503783 } },
+  { edificio: 'ITUZAINGO 654', unidad: 'SS BAULERA9', nota: 'Pagliero alquila la Baulera 9: en la base estaba cargada como "Baulera 10", se corrige el nombre',
+    base: 'ITUZAINGO 654 -SS BAULERA 10', renombrar: 'ITUZAINGO 654 -SS BAULERA 9' },
   { edificio: 'ITUZAINGO 654', unidad: '2-1', nota: 'Contrato renovado con el mismo inquilino: 09/08/2026 al 08/08/2028',
     set: { inicio: '2026-08-09', fin: '2028-08-08', alq_inicial: 533533 } },
   { edificio: 'BELGRANO 766', unidad: 'P6', nota: 'Alquiler actual $1.050.000 (igual al inicial)', set: { alq_actual: 1050000 } },
@@ -110,11 +112,25 @@ const AX_CORRECCIONES = [
   { edificio: 'FIHSERTON GOLF', unidad: 'EE 2', nota: 'Incluida en el alquiler del U2 P1-A', padre: 'U2 P1-A' },
   { edificio: 'SANTA FE 2833', unidad: 'EE 04', nota: 'Incluida en el alquiler del 1-A', padre: '1-A + EE04' },
 ];
+// Unidades de la base que salen del listado (no se borran: quedan con activo = false)
+const AX_BAJAS = [
+  { unidad: 'RICHIERI 402 4-2', nota: 'Ya no la administran' },
+  { unidad: 'AMENABAR 1941', nota: 'En venta' },
+  { unidad: 'ITUZAINGO 654 -PB EE M8', nota: 'No existe en el Excel (motos PB van de M1 a M7)' },
+  { unidad: 'ITUZAINGO 654 -PB EE M9', nota: 'No existe en el Excel (motos PB van de M1 a M7)' },
+  { unidad: 'ITUZAINGO 654 -PB EE M10', nota: 'No existe en el Excel (motos PB van de M1 a M7)' },
+  { unidad: 'ITUZAINGO 654 -PB EE M11', nota: 'No existe en el Excel (motos PB van de M1 a M7)' },
+];
+function axBajas(alqs){
+  return AX_BAJAS.map(b => ({ ...b, a: alqs.find(a => axCompact(a.unidad) === axCompact(b.unidad)) })).filter(b => b.a && b.a.activo !== false);
+}
+
 function axAplicarCorrecciones(filas){
   const igual = (f, ed, un) => axCompact(f.edificio) === axCompact(ed) && axCompact(f.unidad) === axCompact(un);
   AX_CORRECCIONES.forEach(c => {
     filas.filter(f => igual(f, c.edificio, c.unidad)).forEach(f => {
       if(c.set) Object.assign(f, c.set);
+      if(c.base){ f.baseUnidad = c.base; f.renombrar = c.renombrar || null; }
       if(c.omitir) f.omitir = true;
       if(c.sinAumentosIncluidos) f.sinAumentosIncluidos = true;
       if(c.padre){
@@ -167,6 +183,12 @@ function axEmparejar(filas, alqs){
   filas.forEach(f => alqs.forEach(a => { const s = axPuntaje(f, a); if(s >= 3) pares.push({ f, a, s }); }));
   pares.sort((x, y) => y.s - x.s);
   const usadosF = new Set(), usadosA = new Set(), match = {};
+  // Bajas y emparejamientos indicados a mano
+  axBajas(alqs).forEach(b => usadosA.add(b.a.id));
+  filas.filter(f => f.baseUnidad).forEach(f => {
+    const a = alqs.find(x => axCompact(x.unidad) === axCompact(f.baseUnidad));
+    if(a){ usadosF.add(f.fila); usadosA.add(a.id); match[f.fila] = { id: a.id, puntaje: 9 }; }
+  });
   pares.forEach(({ f, a, s }) => {
     if(usadosF.has(f.fila) || usadosA.has(a.id)) return;
     usadosF.add(f.fila); usadosA.add(a.id); match[f.fila] = { id: a.id, puntaje: s };
@@ -188,6 +210,8 @@ function axIgual(campo, antes, despues){
 // 2) mismo nombre, 3) mismas palabras en otro orden o con segundo nombre ("Musto Damian" = "Damián Musto")
 function axResolverProp(nombre, props, alqs){
   const n = axNorm(nombre);
+  // DB+GB cobra en la cuenta del Fideicomiso Quadra (Ituzaingó 650)
+  if(n.replace(/\s/g, '') === 'DB+GB'){ const fid = props.find(p => axNorm(p.nombre).startsWith('FIDEICOMISO')); if(fid) return fid.id; }
   const porUnidad = alqs.find(a => axNorm(a.propietario) === n && a.propietario_id && props.some(p => p.id === a.propietario_id));
   if(porUnidad) return porUnidad.propietario_id;
   const exacto = props.find(p => axNorm(p.nombre) === n);
@@ -335,6 +359,7 @@ function axRenderImport(){
       const padre = filas.find(x => x.fila === f.padreFila);
       if(a && !a.parent_id && padre?.matchId) f.cambios.push({ col: 'parent_id', antes: null, nuevo: padre.matchId, texto: `parte de ${padre.edificio} ${padre.unidad}` });
     }
+    if(a && f.renombrar && a.unidad !== f.renombrar) f.cambios.unshift({ col: 'unidad', antes: a.unidad, nuevo: f.renombrar });
     if(f.omitir){ f.aplicar = false; f.cambios = []; f.vacia = []; }
     if(f.aplicar === undefined) f.aplicar = a ? f.cambios.length > 0 : !!f.inquilino;
     if(f.vaciar === undefined) f.vaciar = false;
@@ -343,7 +368,8 @@ function axRenderImport(){
   const sinCambios = filas.filter(f => f.matchId && !f.cambios.length && !f.vacia.length);
   const nuevas = filas.filter(f => !f.matchId && !f.omitir);
   const usados = new Set(filas.map(f => f.matchId).filter(Boolean));
-  const noEnExcel = alqs.filter(a => !usados.has(a.id));
+  const bajas = axBajas(alqs);
+  const noEnExcel = alqs.filter(a => !usados.has(a.id) && !bajas.some(b => b.a.id === a.id));
   const opcionesBase = alqs.map(a => `<option value="${a.id}">#${a.id} · ${axH(axNombreUnidad(a))} · ${axH(a.inquilino || 'sin inquilino')}</option>`).join('');
   const nombreCampo = c => c.replace(/_/g, ' ');
   const val = v => v === null || v === undefined || v === '' ? '<span style="color:var(--text-3)">vacío</span>' : axH(v);
@@ -398,6 +424,10 @@ function axRenderImport(){
       </tr>`).join('') || `<tr><td ${tdS} colspan="3">Ninguna</td></tr>`}
       </tbody></table>`)}
 
+    ${bajas.length ? tabla(`6 · Salen del listado (${bajas.length}) — no se borran, quedan guardadas como inactivas`, `<table style="table-layout:auto"><tbody>
+      ${bajas.map(b => `<tr style="cursor:default"><td ${tdS}>#${b.a.id} ${axH(b.a.unidad)}</td><td ${tdS}>${axH(b.a.inquilino || 'sin inquilino')}</td><td ${tdS}>${axH(b.nota)}</td></tr>`).join('')}
+      </tbody></table>`) : ''}
+
     <details style="margin-bottom:18px"><summary style="cursor:pointer;font-size:13px;color:var(--text-2)">Sin cambios (${sinCambios.length}) · En la base pero no en el Excel, no se tocan (${noEnExcel.length})</summary>
       <div style="font-size:12px;color:var(--text-2);margin-top:8px"><b>Sin cambios:</b> ${sinCambios.map(f => `${axH(f.edificio)} ${axH(f.unidad)}`).join(' · ') || '—'}</div>
       <div style="font-size:12px;color:var(--text-2);margin-top:8px"><b>No están en el Excel:</b> ${noEnExcel.map(a => `#${a.id} ${axH(axNombreUnidad(a))}`).join(' · ') || '—'}</div>
@@ -422,7 +452,7 @@ function axImpMatch(fila, id){
 async function axAplicarImport(){
   const sel = axImp.filas.filter(f => f.aplicar || (f.matchId && f.vaciar));
   if(sel.length === 0){ showToast('No hay nada tildado'); return; }
-  const actualizar = sel.filter(f => f.matchId).length, crear = sel.filter(f => !f.matchId).length;
+  const actualizar = sel.filter(f => f.matchId).length + axBajas(axImp.alqs).length, crear = sel.filter(f => !f.matchId).length;
   if(!confirm(`Se van a actualizar ${actualizar} unidades y crear ${crear} nuevas${axImp.nuevosProps.length ? ` y ${axImp.nuevosProps.length} propietarios` : ''}.\nNo se borra ninguna fila. ¿Continuar?`)) return;
 
   // Respaldo
@@ -458,6 +488,11 @@ async function axAplicarImport(){
     }
     if(res.error){ err++; escribir(`❌ Fila ${f.fila} (${axH(f.edificio)} ${axH(f.unidad)}): ${axH(res.error.message)}`, true); }
     else ok++;
+  }
+  for(const b of axBajas(axImp.alqs)){
+    const res = await db.from('alquileres').update({ activo: false }).eq('id', b.a.id);
+    if(res.error){ err++; escribir(`❌ No se pudo quitar del listado ${axH(b.a.unidad)}: ${axH(res.error.message)}`, true); }
+    else { ok++; escribir(`✓ Quitada del listado: ${axH(b.a.unidad)} (${axH(b.nota)})`); }
   }
   escribir(`<b>Listo: ${ok} unidades guardadas${err ? `, ${err} con error` : ''}.</b> <a href="#" onclick="event.preventDefault();currentView='alquileres2';loadAlquileres()">Ir a Alquileres →</a>`);
   showToast(`Importación terminada: ${ok} ok${err ? `, ${err} con error` : ''}`);
