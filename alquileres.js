@@ -64,6 +64,8 @@ function axEsHija(a){ return !!a.parent_id && a.parent_id !== a.id; }
 function axActiva(a){ return a.activo !== false && !axEsHija(a) && !!(a.inquilino || '').trim() && axImporte(a) > 0; }
 function axTabDe(a){ const p = axNorm(a.propietario).replace(/\s/g,''); return (p === 'DB' || p === 'DB+GB') ? 'dbgb' : 'prop'; }
 function axSinICL(a){ const t = axTipoContrato(a); return t === 'FIJO' || t === 'SIN CONTRATO' || axEsUSD(a); }
+// Índice de ajuste (columna "ajuste"): ICL por defecto; IPC se avisa pero no se calcula
+function axIndice(a){ return axNorm(a.ajuste) === 'IPC' ? 'IPC' : 'ICL'; }
 function axEdificio(a){ return a.edificio || a.direccion || ''; }
 function axNombreUnidad(a){
   const ed = axEdificio(a), un = a.unidad || '';
@@ -287,7 +289,7 @@ async function axGenerarMes(){
 async function axCargarICL(){
   // Para encadenar desde el inicio del contrato se necesita el ICL desde la fecha de inicio
   const pend = axAlq.filter(a => axActiva(a)).map(a => ({ a, au: axAumentoCobro(a, axPeriodo) }))
-    .filter(x => x.au && x.au.fechaAjuste && !x.au.cobroSiguiente && axParseFecha(x.a.inicio_contrato));
+    .filter(x => x.au && x.au.fechaAjuste && !x.au.cobroSiguiente && axIndice(x.a) === 'ICL' && axParseFecha(x.a.inicio_contrato));
   if(pend.length === 0 || axICLCargando) return;
   const desde = new Date(Math.min(...pend.map(x => axParseFecha(x.a.inicio_contrato)))); desde.setDate(desde.getDate() - 15);
   const hasta = new Date(Math.max(...pend.map(x => x.au.fechaAjuste)));
@@ -339,6 +341,7 @@ function axCalculoICL(a){
   if(!au) return null;
   const aj = axAjusteDe(a.id);
   if(aj) return { au, aj, confirmado: true };
+  if(axIndice(a) === 'IPC' && au.fechaAjuste) return { au, info: `Ajusta por IPC (no por ICL): el ${axFmtFecha(au.fechaAjuste)} calculá el monto nuevo y cargalo con "✎ Editar datos de la unidad"` };
   if(au.cobroSiguiente && !au.yaIncluido) return { au, info: `Rige el ${axFmtFecha(au.fechaAjuste)} (después del día ${AX_DIA_LIMITE}): este mes se cobra el importe actual; el aumento y la diferencia se calculan el mes que viene` };
   if(au.yaIncluido) return { au, incluido: true };
   if(au.soloTexto) return { au, error: 'MES AUMENTO dice este mes, pero por la fecha de inicio no corresponde: revisá el contrato' };
@@ -801,7 +804,7 @@ const AX_EDIT = [
   ['propietario', 'Propietario', 'text'], ['inquilino', 'Inquilino', 'text'], ['email_inquilino', 'Email inquilino', 'text'],
   ['cobra', 'Cobra', 'text'], ['inicio_contrato', 'Inicio contrato', 'date'], ['fin_contrato', 'Fin contrato', 'date'],
   ['tipo_contrato', 'Tipo de contrato', ['TRIMESTRAL','CUATRIMESTRAL','SEMESTRAL','FIJO','SIN CONTRATO']],
-  ['mes_aumento', 'Mes aumento (texto)', 'text'], ['fecha_ultimo_ajuste', 'Último aumento aplicado', 'date'],
+  ['ajuste', 'Índice de ajuste', ['ICL','IPC']], ['mes_aumento', 'Mes aumento (texto)', 'text'], ['fecha_ultimo_ajuste', 'Último aumento aplicado', 'date'],
   ['moneda', 'Moneda', ['ARS','USD']], ['alq_inicial', 'Alquiler inicial', 'number'], ['alq_actual', 'Alquiler actual ($)', 'number'],
   ['alq_actual_usd', 'Alquiler actual (USD)', 'number'], ['comision_pct', 'Comisión MAO (%)', 'number'],
 ];
