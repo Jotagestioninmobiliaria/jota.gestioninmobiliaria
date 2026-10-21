@@ -8,6 +8,7 @@ const AX_MESES = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','A
 const AX_ETAPAS = {
   sin_avisar: { label: 'Sin avisar', bg: '',        pill: '#F1EFE8', color: '#5F5E5A' },
   avisado:    { label: 'Avisado',    bg: '#FFF7D1', pill: '#FBE7A1', color: '#7A5B00' },
+  parcial:    { label: 'Pago parcial', bg: '#FFEFE0', pill: '#FAD3AE', color: '#8A4A00' },
   pagado:     { label: 'Pagado',     bg: '#EEF7E6', pill: '#D6EDC4', color: '#3B6D11' },
   rendido:    { label: 'Rendido',    bg: '#D9EFC9', pill: '#3B6D11', color: '#FFFFFF' },
 };
@@ -17,6 +18,7 @@ Titular de la cuenta: Juliana Rubio`;
 
 let axAlq = [], axPagos = [], axAjustes = [], axProps = [];
 let axPeriodo = '', axTab = 'prop', axOpen = null, axBusqueda = '', axFiltroEtapa = '', axSoloAumento = false;
+let axPend = [], axDeudas = [], axCobros = [], axDeudaOK = true;
 let axSchemaOK = true, axICL = null, axICLError = null, axICLCargando = false;
 const axPartido = {}, axMsgEditado = {};
 
@@ -137,6 +139,56 @@ function axEtapa(p){
   return 'sin_avisar';
 }
 
+// ---------- deudas ----------
+// Desde noviembre 2026 la app arma sola la deuda: todo mes anterior que no quedó pagado.
+// Lo de antes (o expensas, intereses, etc.) se carga a mano en la tabla "deudas".
+// Interés por mora: simple, % por mes de atraso (columna interes_mensual de la unidad),
+// solo sobre deudas de alquiler. Lo ya devengado se guarda en cada pago para no cobrarlo dos veces.
+const AX_DEUDA_DESDE = '11-2026';
+const AX_CONCEPTOS = ['Alquiler', 'Expensas', 'Cochera', 'Intereses', 'Otro'];
+function axPagoSaldo(p){ return Math.max(0, Math.round((Number(p.monto_esperado) || 0) - (Number(p.monto_cobrado) || 0))); }
+function axMesesAtraso(desde){ return Math.max(0, axPeriodoNum(axPeriodo) - axPeriodoNum(desde)); }
+// Interés pendiente de un ítem (devengado hasta el mes que se mira − lo ya pagado)
+function axInteresItem(a, ref, periodo, concepto, saldo){
+  const tasa = Number(a.interes_mensual) || 0;
+  if(!(tasa > 0) || concepto !== 'Alquiler') return { tasa: 0, meses: 0, devengado: Number(ref.interes_devengado) || 0, interes: 0 };
+  const meses = axMesesAtraso(periodo);
+  const devengado = (Number(ref.interes_devengado) || 0) + saldo * tasa * axMesesAtraso(ref.interes_calc_periodo || periodo);
+  return { tasa, meses, devengado: Math.round(devengado), interes: Math.max(0, Math.round(devengado - (Number(ref.interes_pagado) || 0))) };
+}
+// Deuda de meses anteriores de una unidad, de la más vieja a la más nueva
+function axDeudaItems(a){
+  if(!axDeudaOK) return [];
+  const hoy = axPeriodoNum(axPeriodo), desde = axPeriodoNum(AX_DEUDA_DESDE), usd = axEsUSD(a);
+  const items = [];
+  axPend.filter(p => p.alquiler_id === a.id && axPeriodoNum(p.periodo) >= desde && axPeriodoNum(p.periodo) < hoy && axPagoSaldo(p) > 0)
+    .forEach(p => items.push({ tipo: 'pago', ref: p, periodo: p.periodo, concepto: 'Alquiler', saldo: axPagoSaldo(p) }));
+  axDeudas.filter(d => d.alquiler_id === a.id && axPeriodoNum(d.periodo) < hoy && Math.round(Number(d.monto) - (Number(d.pagado) || 0)) > 0)
+    .forEach(d => items.push({ tipo: 'deuda', ref: d, periodo: d.periodo, concepto: d.concepto || 'Alquiler', detalle: d.detalle, saldo: Math.round(Number(d.monto) - (Number(d.pagado) || 0)) }));
+  items.forEach(it => { Object.assign(it, axInteresItem(a, it.ref, it.periodo, it.concepto, it.saldo)); it.usd = usd; it.total = it.saldo + it.interes; });
+  return items.sort((x, y) => axPeriodoNum(x.periodo) - axPeriodoNum(y.periodo) || AX_CONCEPTOS.indexOf(x.concepto) - AX_CONCEPTOS.indexOf(y.concepto));
+}
+function axDeudaTotal(a){ return axDeudaItems(a).reduce((s, it) => s + it.total, 0); }
+// Lo que falta pagar del mes (si ya pagó una parte, se descuenta)
+function axSaldoMes(a){
+  const p = axPagoDe(a.id), e = axEtapa(p), total = axCalculoMes(a).total;
+  if(!axActiva(a) || e === 'pagado' || e === 'rendido') return 0;
+  return Math.max(0, total - (e === 'parcial' ? Number(p.monto_cobrado) || 0 : 0));
+}
+function axAPagar(a){ return axSaldoMes(a) + axDeudaTotal(a); }
+// Honorarios que corresponden a la deuda de alquiler (misma proporción que el mes)
+function axHonorDeuda(a){
+  if(axEsUSD(a)) return 0;
+  const c = axCalculoMes(a), ratio = c.total ? axHonorarios(a, c.base) / c.total : 0;
+  return Math.round(axDeudaItems(a).filter(it => it.concepto === 'Alquiler').reduce((s, it) => s + it.saldo, 0) * ratio);
+}
+function axTextoItem(it){
+  const qué = it.concepto === 'Alquiler' ? '' : it.concepto + ' ';
+  let t = `Pendiente ${qué}${axFmtPeriodo(it.periodo)}${it.detalle ? ` (${it.detalle})` : ''} ${axMonto(it.saldo, it.usd)}.-`;
+  if(it.interes) t += `\n  Intereses por mora (${(it.tasa * 100).toLocaleString('es-AR')}% x ${it.meses} mes${it.meses !== 1 ? 'es' : ''}) ${axMonto(it.interes, it.usd)}.-`;
+  return t;
+}
+
 // Monto del mes: si hay aumento confirmado y rige desde un día distinto del 1,
 // se cobra el mes partido (días con el importe anterior + días con el nuevo).
 // Monto del mes con IVA (si la unidad lo factura): el aumento se calcula sobre el neto
@@ -225,6 +277,11 @@ function axLineasUnidad(a, conNombre){
     txt += `${titulo}${conNombre ? ':' : ''} ${axMonto(c.base, usd)}.-\n`;
   }
   if(c.iva) txt += `IVA ${(c.ivaPct * 100).toLocaleString('es-AR')}%: ${axMonto(c.iva, usd)}.-\nTotal con IVA ${axMonto(c.total, usd)}.-\n`;
+  const p = axPagoDe(a.id);
+  if(['pagado','rendido'].includes(axEtapa(p))) txt += `Abonado ✓\n`;
+  else if(axEtapa(p) === 'parcial' && Number(p.monto_cobrado) > 0) txt += `Pagado a cuenta: ${axMonto(p.monto_cobrado, usd)}.- · Resta ${axMonto(axSaldoMes(a), usd)}.-\n`;
+  const deuda = axDeudaItems(a);
+  if(deuda.length) txt += `\nSaldo pendiente de meses anteriores${conNombre ? ` (${axNombreUnidad(a)})` : ''}:\n` + deuda.map(axTextoItem).join('\n') + '\n';
   return txt;
 }
 
@@ -232,8 +289,11 @@ function axLineasUnidad(a, conNombre){
 function axBloquePago(unidades){
   const a = unidades[0], prop = axPropDe(a);
   const usd = axEsUSD(a);
-  const total = unidades.reduce((s, x) => s + axCalculoMes(x).total, 0);
-  const honor = usd ? 0 : unidades.reduce((s, x) => s + axHonorarios(x, axCalculoMes(x).base), 0);
+  // Total = lo que falta del mes + la deuda anterior (con intereses)
+  const total = unidades.reduce((s, x) => s + axAPagar(x), 0);
+  const conDeuda = unidades.some(x => axDeudaItems(x).length || axEtapa(axPagoDe(x.id)) === 'parcial');
+  const honor = usd ? 0 : unidades.reduce((s, x) => s + (axSaldoMes(x) > 0 ? axHonorarios(x, axCalculoMes(x).base) : 0) + axHonorDeuda(x), 0);
+  const T = conDeuda ? 'TOTAL PENDIENTE AL DÍA DE LA FECHA' : 'TOTAL a abonar';
   const tieneBanco = prop && (prop.cbu || prop.nro_cuenta || prop.alias_mao);
   const banco = () => {
     let t = `Titular: ${prop.titular || prop.nombre}\n`;
@@ -243,15 +303,15 @@ function axBloquePago(unidades){
     if(prop.alias_mao && !prop.cbu) t += `Alias: ${prop.alias_mao}\n`;
     return t;
   };
-  if(prop && prop.datos_pago_wa) return `\nTOTAL a abonar ${axMonto(total, usd)}.-\n${prop.datos_pago_wa}\n`;
+  if(prop && prop.datos_pago_wa) return `\n${T} ${axMonto(total, usd)}.-\n${prop.datos_pago_wa}\n`;
   if(axTabDe(a) === 'prop' && tieneBanco && honor > 0){
     return `Se descuentan honorarios inmobiliarios ${axPesos(honor)}.- (descontados al propietario/a)\n\n`
       + `TOTAL a depositar a ${prop.titular || prop.nombre} ${axPesos(total - honor)}.-\n${banco()}`
       + `\nTOTAL a depositar a MAO Propiedades ${axPesos(honor)}.- (honorarios inmobiliarios)\n${AX_MAO_PAGO}\n`;
   }
-  if(tieneBanco) return `\nTOTAL a depositar a ${prop.titular || prop.nombre} ${axMonto(total, usd)}.-\n${banco()}`;
-  if(axTabDe(a) === 'prop') return `\nTOTAL a abonar ${axMonto(total, usd)}.-\n${AX_MAO_PAGO}\n`;
-  return `\nTOTAL a abonar ${axMonto(total, usd)}.-\n[Completar datos de pago de ${a.propietario || 'propietario'}]\n`;
+  if(tieneBanco) return `\n${conDeuda ? T + ' — depositar a' : 'TOTAL a depositar a'} ${prop.titular || prop.nombre} ${axMonto(total, usd)}.-\n${banco()}`;
+  if(axTabDe(a) === 'prop') return `\n${T} ${axMonto(total, usd)}.-\n${AX_MAO_PAGO}\n`;
+  return `\n${T} ${axMonto(total, usd)}.-\n[Completar datos de pago de ${a.propietario || 'propietario'}]\n`;
 }
 
 // Mensaje para el inquilino con TODAS sus unidades del mes, agrupadas por a quién se paga
@@ -278,16 +338,22 @@ async function loadAlquileres(){
   axAncho();
   if(!axPeriodo) axPeriodo = axHoyPeriodo();
   document.getElementById('main').innerHTML = '<div class="loading"><div class="spinner"></div><span>Cargando alquileres...</span></div>';
-  const [r1, r2, r3, r4] = await Promise.all([
+  const [r1, r2, r3, r4, r5, r6, r7] = await Promise.all([
     db.from('alquileres').select('*').order('id'),
     db.from('pagos_mensuales').select('*').eq('periodo', axPeriodo),
     db.from('ajustes_icl').select('*').eq('periodo', axPeriodo),
     db.from('propietarios').select('*'),
+    // meses sin pagar (de cualquier período) para armar la deuda
+    db.from('pagos_mensuales').select('*').in('etapa', ['sin_avisar', 'avisado', 'parcial']),
+    db.from('deudas').select('*').order('id'),
+    db.from('cobros').select('*').order('id', { ascending: false }).limit(500),
   ]);
   if(r1.error){ document.getElementById('main').innerHTML = `<div class="loading"><span style="color:var(--red)">❌ ${axH(r1.error.message)}</span></div>`; return; }
   axAlq = r1.data || []; axPagos = r2.data || []; axProps = r4.data || [];
   axSchemaOK = !r3.error;
   axAjustes = r3.error ? [] : (r3.data || []);
+  axDeudaOK = !r6.error && !r7.error;
+  axPend = r5.data || []; axDeudas = r6.data || []; axCobros = r7.data || [];
   if(axSchemaOK) await axGenerarMes();
   renderAlquileres();
   if(axSchemaOK) axCargarICL();
@@ -387,7 +453,7 @@ function axCalculoICL(a){
 function axUnidadesTab(tab){ return axAlq.filter(a => a.activo !== false && !axEsHija(a) && axTabDe(a) === tab); }
 
 function axTotales(lista){
-  const t = { ars: 0, usd: 0, cobArs: 0, cobUsd: 0, hon: 0, honCob: 0, n: 0, etapas: { sin_avisar: 0, avisado: 0, pagado: 0, rendido: 0 } };
+  const t = { ars: 0, usd: 0, cobArs: 0, cobUsd: 0, hon: 0, honCob: 0, n: 0, deuda: 0, deudaUsd: 0, deudores: 0, etapas: { sin_avisar: 0, avisado: 0, parcial: 0, pagado: 0, rendido: 0 } };
   lista.forEach(a => {
     const p = axPagoDe(a.id), e = axEtapa(p), usd = axEsUSD(a);
     const c = axCalculoMes(a), monto = c.total;
@@ -401,6 +467,9 @@ function axTotales(lista){
       const cob = Number(p?.monto_cobrado) || monto;
       if(usd) t.cobUsd += cob; else t.cobArs += cob;
     }
+    if(e === 'parcial'){ const cob = Number(p?.monto_cobrado) || 0; if(usd) t.cobUsd += cob; else t.cobArs += cob; }
+    const d = axDeudaTotal(a);
+    if(d > 0){ t.deudores++; if(usd) t.deudaUsd += d; else t.deuda += d; }
   });
   return t;
 }
@@ -408,6 +477,7 @@ function axTotalesHTML(t){
   const usd = t.usd > 0 || t.cobUsd > 0;
   return `<span>Esperado <b>${axPesos(t.ars)}</b>${usd ? ` + <b>${axUSD(t.usd)}</b>` : ''}</span>
     <span style="margin-left:12px">Cobrado <b style="color:var(--green)">${axPesos(t.cobArs)}</b>${usd ? ` + <b style="color:var(--green)">${axUSD(t.cobUsd)}</b>` : ''}</span>
+    ${t.deudores ? `<span style="margin-left:12px">Deuda <b style="color:var(--red)">${axPesos(t.deuda)}</b></span>` : ''}
     ${t.hon ? `<span style="margin-left:12px">Honorarios <b style="color:var(--blue)">${axPesos(t.honCob)}</b> de ${axPesos(t.hon)}</span>` : ''}`;
 }
 
@@ -416,6 +486,7 @@ function axFiltrar(lista){
   return lista.filter(a => {
     if(q && !axNorm(`${a.unidad} ${axEdificio(a)} ${a.inquilino} ${a.propietario} ${a.cobra}`).includes(q)) return false;
     if(axFiltroEtapa === 'sin_tel'){ if(axTelGrupo(a)) return false; }
+    else if(axFiltroEtapa === 'deuda'){ if(!(axDeudaTotal(a) > 0)) return false; }
     else if(axFiltroEtapa && axEtapa(axPagoDe(a.id)) !== axFiltroEtapa) return false;
     if(axSoloAumento && !axAumentoCobro(a, axPeriodo)) return false;
     return true;
@@ -423,6 +494,7 @@ function axFiltrar(lista){
 }
 
 function renderAlquileres(){
+  if(axTab === 'deudores') return axRenderDeudores();
   const activasTab = axUnidadesTab(axTab).filter(axActiva);
   const vacantes = axUnidadesTab(axTab).filter(a => !axActiva(a));
   const tot = axTotales(activasTab);
@@ -432,30 +504,15 @@ function renderAlquileres(){
   lista.forEach(a => { const k = a.propietario || 'Sin propietario'; (grupos[k] = grupos[k] || []).push(a); });
   const ordenGrupos = Object.keys(grupos).sort((x, y) => x === 'Sin propietario' ? 1 : y === 'Sin propietario' ? -1 : x.localeCompare(y, 'es'));
 
-  const cuenta = tab => axUnidadesTab(tab).filter(axActiva).length;
   const conAumento = activasTab.filter(a => axAumentoCobro(a, axPeriodo));
   const chip = (val, label, n) => `<button class="btn-sm" onclick="axFiltroEtapa='${val}';renderAlquileres()" style="${axFiltroEtapa === val ? 'background:var(--text);color:white;border-color:var(--text)' : ''}">${label}${n !== undefined ? ` · ${n}` : ''}</button>`;
   const sinTel = activasTab.filter(a => !axTelGrupo(a)).length;
 
   document.getElementById('main').innerHTML = `
-    <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
-      <div><h2>Alquileres</h2><p>Circuito del mes: aumento → aviso → cobro → rendición</p></div>
-      <div style="display:flex;gap:8px;align-items:center">
-        <button class="btn-sm" onclick="axAbrirImportador()">⇪ Importar Excel</button>
-        <div style="display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:8px 14px">
-          <button onclick="axCambiarMes(-1)" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--text-2)">‹</button>
-          <span style="font-weight:500;font-size:14px;min-width:130px;text-align:center">${axFmtPeriodo(axPeriodo)}</span>
-          <button onclick="axCambiarMes(1)" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--text-2)">›</button>
-        </div>
-      </div>
-    </div>
-    ${!axSchemaOK ? `<div style="background:var(--red-bg);color:var(--red);border-radius:var(--radius);padding:12px 16px;margin-bottom:16px;font-size:13px">
-      ⚠ Falta preparar la base de datos: corré el script <b>sql/2026-10_alquileres_parte1.sql</b> en Supabase → SQL Editor. Hasta entonces no se pueden guardar avisos ni aumentos.</div>` : ''}
-    <div style="display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:16px">
-      ${[['db','DB'],['dbgb','DB + GB'],['prop','Propietarios']].map(([k,l]) => `
-        <button onclick="axTab='${k}';axOpen=null;renderAlquileres()" style="padding:10px 18px;border:none;background:none;cursor:pointer;font-family:inherit;font-size:14px;font-weight:${axTab===k?600:400};color:${axTab===k?'var(--text)':'var(--text-3)'};border-bottom:2px solid ${axTab===k?'var(--accent)':'transparent'};margin-bottom:-1px">${l} <span style="font-size:11px;color:var(--text-3)">${cuenta(k)}</span></button>`).join('')}
-    </div>
-    <div class="stats" style="grid-template-columns:repeat(7,1fr)">
+    ${axHeaderHTML()}
+    ${axAvisosBase()}
+    ${axTabsHTML()}
+    <div class="stats" style="grid-template-columns:repeat(8,1fr)">
       <div class="stat-card"><div class="stat-label">Unidades</div><div class="stat-value">${tot.n}</div></div>
       <div class="stat-card"><div class="stat-label">Sin avisar</div><div class="stat-value">${tot.etapas.sin_avisar}</div></div>
       <div class="stat-card" style="background:${AX_ETAPAS.avisado.bg}"><div class="stat-label">Avisados</div><div class="stat-value">${tot.etapas.avisado}</div></div>
@@ -463,11 +520,12 @@ function renderAlquileres(){
       <div class="stat-card"><div class="stat-label">Esperado</div><div class="stat-value" style="font-size:14px">${axPesos(tot.ars)}${tot.usd ? `<br>${axUSD(tot.usd)}` : ''}</div></div>
       <div class="stat-card"><div class="stat-label">Cobrado</div><div class="stat-value green" style="font-size:14px">${axPesos(tot.cobArs)}${tot.usd ? `<br>${axUSD(tot.cobUsd)}` : ''}</div></div>
       <div class="stat-card" style="background:var(--blue-bg)" title="Honorarios de MAO del mes: cobrados (de los alquileres pagados) / total esperado"><div class="stat-label">Honorarios MAO</div><div class="stat-value" style="font-size:14px;color:var(--blue)">${axPesos(tot.honCob)}<div style="font-size:11px;font-weight:400;color:var(--text-2)">de ${axPesos(tot.hon)}</div></div></div>
+      <div class="stat-card" style="cursor:pointer;${tot.deudores ? 'background:var(--red-bg)' : ''}" onclick="axFiltroEtapa='deuda';renderAlquileres()" title="Deuda de meses anteriores (con intereses). Tocá para ver solo los que deben"><div class="stat-label">Deuda anterior</div><div class="stat-value" style="font-size:14px;${tot.deudores ? 'color:var(--red)' : ''}">${axPesos(tot.deuda)}${tot.deudaUsd ? `<br>${axUSD(tot.deudaUsd)}` : ''}<div style="font-size:11px;font-weight:400;color:var(--text-2)">${tot.deudores} deudor${tot.deudores !== 1 ? 'es' : ''}</div></div></div>
     </div>
     ${axRenderICL(conAumento)}
     <div class="toolbar" style="flex-wrap:wrap">
       <div class="search-wrap"><span class="search-icon">⌕</span><input id="ax-buscar" placeholder="Buscar unidad, inquilino, propietario..." value="${axH(axBusqueda)}" oninput="axBusqueda=this.value;axRenderLista()"></div>
-      ${chip('', 'Todos')}${chip('sin_avisar','Sin avisar',tot.etapas.sin_avisar)}${chip('avisado','Avisados',tot.etapas.avisado)}${chip('pagado','Pagados',tot.etapas.pagado)}${chip('rendido','Rendidos',tot.etapas.rendido)}${chip('sin_tel','📵 Sin teléfono',sinTel)}
+      ${chip('', 'Todos')}${chip('sin_avisar','Sin avisar',tot.etapas.sin_avisar)}${chip('avisado','Avisados',tot.etapas.avisado)}${tot.etapas.parcial ? chip('parcial','Pago parcial',tot.etapas.parcial) : ''}${chip('pagado','Pagados',tot.etapas.pagado)}${chip('rendido','Rendidos',tot.etapas.rendido)}${chip('sin_tel','📵 Sin teléfono',sinTel)}${chip('deuda','💸 Con deuda',tot.deudores)}
       <label style="font-size:12px;color:var(--text-2);display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" ${axSoloAumento?'checked':''} onchange="axSoloAumento=this.checked;renderAlquileres()"> Solo con aumento</label>
     </div>
     <div style="font-size:11px;color:var(--text-3);margin:-4px 0 12px">Atajos: ↑ ↓ moverse · Enter abrir · W WhatsApp · A avisado · P pagado</div>
@@ -505,7 +563,7 @@ function axRenderGrupos(orden, grupos){
         <table>
           <thead><tr>
             <th>Unidad</th><th style="width:20%">Inquilino</th><th style="width:128px">Contrato</th>
-            <th style="width:130px">Este mes</th><th style="width:96px">Estado</th><th style="width:250px">Acciones</th>
+            <th style="width:130px">Este mes</th><th style="width:96px">Estado</th><th style="width:280px">Acciones</th>
           </tr></thead>
           <tbody>${items.map(axRenderFila).join('')}</tbody>
         </table>
@@ -534,13 +592,13 @@ function axRenderFila(a){
       <td style="background:${et.bg}" title="${axH(axNombreUnidad(a))}"><b style="font-weight:500">${axH(axNombreUnidad(a))}</b>${aumentoIcon}${axVence(a)}</td>
       <td style="background:${et.bg}" title="${axH(a.inquilino)}">${axH(a.inquilino)}${tel ? '' : ' <span title="Falta teléfono">📵</span>'}${axGrupoInquilino(a).length > 1 ? ` <span title="Un solo WhatsApp para sus ${axGrupoInquilino(a).length} unidades" style="font-size:11px;color:var(--blue)">👥${axGrupoInquilino(a).length}</span>` : ''}</td>
       <td style="background:${et.bg};font-size:11px;color:var(--text-2)" title="${axH(axTipoContrato(a))}">${axH(axTipoContrato(a) ? axTipoContrato(a).charAt(0) + axTipoContrato(a).slice(1).toLowerCase() : '—')}</td>
-      <td style="background:${et.bg};font-weight:500">${axMonto(c.total, c.usd)}${comp}</td>
+      <td style="background:${et.bg};font-weight:500">${axMonto(c.total, c.usd)}${comp}${e === 'parcial' ? `<div style="font-size:11px;font-weight:400;color:#8A4A00">resta ${axMonto(axSaldoMes(a), c.usd)}</div>` : ''}${axDeudaTotal(a) > 0 ? `<div style="font-size:11px;font-weight:500;color:var(--red)" title="Deuda de meses anteriores (con intereses)">💸 debe ${axMonto(axDeudaTotal(a), c.usd)}</div>` : ''}</td>
       <td style="background:${et.bg}"><span class="badge" style="background:${et.pill};color:${et.color}">${et.label}</span></td>
       <td style="background:${et.bg}" onclick="event.stopPropagation()">
         <div style="display:flex;gap:4px">
           <button class="btn-sm" onclick="axWhatsApp(${a.id})" title="Abrir WhatsApp con el mensaje (W)" style="color:#128C4A;border-color:#9ED9B5">💬 WhatsApp</button>
           <button class="btn-sm" onclick="axSetEtapa(${a.id},'avisado')" ${e !== 'sin_avisar' ? 'disabled style="opacity:.35"' : ''}>Avisado</button>
-          <button class="btn-sm" onclick="axSetEtapa(${a.id},'pagado')" ${e === 'pagado' || e === 'rendido' ? 'disabled style="opacity:.35"' : ''}>Pagado</button>
+          <button class="btn-sm" onclick="axPagado(${a.id})" ${(e === 'pagado' || e === 'rendido') && !(axDeudaTotal(a) > 0) ? 'disabled style="opacity:.35"' : ''}>${axDeudaTotal(a) > 0 || e === 'parcial' ? 'Registrar pago' : 'Pagado'}</button>
         </div>
       </td>
     </tr>
@@ -565,6 +623,7 @@ function axRenderDetalle(a){
       ${c.iva ? linea('Alquiler (neto)', axMonto(c.base, usd)) + linea(`IVA ${(c.ivaPct * 100).toLocaleString('es-AR')}%`, axMonto(c.iva, usd)) : ''}
       ${linea(c.iva ? 'Total con IVA' : 'Total alquiler', `<b>${axMonto(c.total, usd)}</b>`)}
       ${honor ? linea('Honorarios MAO', axPesos(honor)) : ''}
+      ${axRenderDeudaDetalle(a)}
       <div style="font-size:11px;font-weight:500;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;margin:12px 0 6px">Datos</div>
       <div style="display:flex;gap:6px;align-items:center;font-size:12px;padding:3px 0">
         <span style="color:var(--text-3);min-width:110px">Tel. inquilino</span>
@@ -576,10 +635,11 @@ function axRenderDetalle(a){
       ${linea('Cobra', axH(a.cobra || '—'))}
       ${linea('Contrato', `${axH(axTipoContrato(a) || '—')} · ${axFmtFecha(axParseFecha(a.inicio_contrato))} → ${axFmtFecha(axParseFecha(a.fin_contrato))}`)}
       ${linea('Mes aumento', axH(a.mes_aumento || '—'))}
+      ${Number(a.interes_mensual) > 0 ? linea('Interés por mora', `${(Number(a.interes_mensual) * 100).toLocaleString('es-AR')}% por mes de atraso`) : ''}
       <div style="display:flex;gap:6px;align-items:center;margin-top:12px;font-size:12px">
         <span style="color:var(--text-3)">Corregir estado:</span>
         <select onchange="axSetEtapa(${a.id}, this.value, true)" style="padding:4px 6px;border:1px solid var(--border);border-radius:6px;font-family:inherit;font-size:12px">
-          ${Object.entries(AX_ETAPAS).map(([k, v]) => `<option value="${k}" ${k === e ? 'selected' : ''}>${v.label}</option>`).join('')}
+          ${Object.entries(AX_ETAPAS).filter(([k]) => k !== 'parcial' || k === e).map(([k, v]) => `<option value="${k}" ${k === e ? 'selected' : ''}>${v.label}</option>`).join('')}
         </select>
         <button class="btn-sm" onclick="axSetEtapa(${a.id},'rendido')" ${e === 'rendido' ? 'disabled style="opacity:.35"' : ''}>Marcar rendido</button>
       </div>
@@ -651,6 +711,265 @@ function axRenderICL(conAumento){
   </details>`;
 }
 
+
+function axHeaderHTML(){
+  return `
+    <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+      <div><h2>Alquileres</h2><p>Circuito del mes: aumento → aviso → cobro → rendición</p></div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn-sm" onclick="axAbrirImportador()">⇪ Importar Excel</button>
+        <div style="display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:8px 14px">
+          <button onclick="axCambiarMes(-1)" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--text-2)">‹</button>
+          <span style="font-weight:500;font-size:14px;min-width:130px;text-align:center">${axFmtPeriodo(axPeriodo)}</span>
+          <button onclick="axCambiarMes(1)" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--text-2)">›</button>
+        </div>
+      </div>
+    </div>`;
+}
+function axAvisosBase(){
+  const caja = txt => `<div style="background:var(--red-bg);color:var(--red);border-radius:var(--radius);padding:12px 16px;margin-bottom:16px;font-size:13px">${txt}</div>`;
+  if(!axSchemaOK) return caja('⚠ Falta preparar la base de datos: corré el script <b>sql/2026-10_alquileres_parte1.sql</b> en Supabase → SQL Editor. Hasta entonces no se pueden guardar avisos ni aumentos.');
+  if(!axDeudaOK) return caja('⚠ Para llevar el registro de deudas falta correr el script <b>sql/2026-10_deudas.sql</b> en Supabase → SQL Editor.');
+  return '';
+}
+function axDeudores(){ return axAlq.filter(a => !axEsHija(a) && axDeudaTotal(a) > 0); }
+function axTabsHTML(){
+  const cuenta = tab => tab === 'deudores' ? axDeudores().length : axUnidadesTab(tab).filter(axActiva).length;
+  return `<div style="display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:16px">
+      ${[['db','DB'],['dbgb','DB + GB'],['prop','Propietarios'],['deudores','💸 Deudores']].map(([k,l]) => `
+        <button onclick="axTab='${k}';axOpen=null;axFiltroEtapa='';renderAlquileres()" style="padding:10px 18px;border:none;background:none;cursor:pointer;font-family:inherit;font-size:14px;font-weight:${axTab===k?600:400};color:${axTab===k?'var(--text)':'var(--text-3)'};border-bottom:2px solid ${axTab===k?'var(--accent)':'transparent'};margin-bottom:-1px;${k === 'deudores' ? 'margin-left:auto' : ''}">${l} <span style="font-size:11px;color:${k === 'deudores' && cuenta(k) ? 'var(--red)' : 'var(--text-3)'}">${cuenta(k)}</span></button>`).join('')}
+    </div>`;
+}
+
+// Pestaña con solo los que deben meses anteriores (de todos los propietarios)
+function axRenderDeudores(){
+  const lista = axDeudores().sort((x, y) => axDeudaTotal(y) - axDeudaTotal(x));
+  const tot = lista.reduce((s, a) => { s[axEsUSD(a) ? 'usd' : 'ars'] += axDeudaTotal(a); return s; }, { ars: 0, usd: 0 });
+  const tabNombre = { db: 'DB', dbgb: 'DB + GB', prop: 'Propietarios' };
+  const td = 'style="padding:10px;font-size:12px;vertical-align:top;white-space:normal"';
+  const filas = lista.map(a => {
+    const items = axDeudaItems(a), usd = axEsUSD(a);
+    return `<tr style="cursor:default">
+      <td ${td}><b style="font-weight:500">${axH(axNombreUnidad(a))}</b><div style="font-size:11px;color:var(--text-3)">${axH(a.propietario || '—')} · ${tabNombre[axTabDe(a)]}${a.activo === false ? ' · ya no está en el listado' : ''}</div></td>
+      <td ${td}>${axH(a.inquilino || '—')}</td>
+      <td ${td}>${items.map(it => `<div>${axH(it.concepto)} ${axFmtPeriodo(it.periodo)}: <b>${axMonto(it.saldo, usd)}</b>${it.interes ? ` <span style="color:var(--red)">+ int. ${axMonto(it.interes, usd)}</span> <span style="color:var(--text-3)">(${it.meses} mes${it.meses !== 1 ? 'es' : ''})</span>` : ''}</div>`).join('')}</td>
+      <td ${td}><b style="color:var(--red)">${axMonto(axDeudaTotal(a), usd)}</b></td>
+      <td ${td}>${axSaldoMes(a) ? axMonto(axSaldoMes(a), usd) : '<span style="color:var(--green)">✓</span>'}</td>
+      <td ${td}><b>${axMonto(axAPagar(a), usd)}</b></td>
+      <td ${td}><div style="display:flex;gap:4px;flex-wrap:wrap">
+        <button class="btn-sm" onclick="axWhatsApp(${a.id})" style="color:#128C4A;border-color:#9ED9B5">💬 WhatsApp</button>
+        <button class="btn-sm" onclick="axModalPago(${a.id})">Registrar pago</button>
+        ${a.activo !== false ? `<button class="btn-sm" onclick="axTab='${axTabDe(a)}';axOpen=${a.id};axFiltroEtapa='';renderAlquileres();document.getElementById('ax-row-${a.id}')?.scrollIntoView({block:'center'})">Ver unidad</button>` : ''}
+      </div></td></tr>`;
+  }).join('');
+  document.getElementById('main').innerHTML = `
+    ${axHeaderHTML()}
+    ${axAvisosBase()}
+    ${axTabsHTML()}
+    <div class="stats" style="grid-template-columns:repeat(3,1fr)">
+      <div class="stat-card" style="background:var(--red-bg)"><div class="stat-label">Deudores</div><div class="stat-value" style="color:var(--red)">${lista.length}</div></div>
+      <div class="stat-card"><div class="stat-label">Deuda anterior (con intereses)</div><div class="stat-value" style="font-size:16px;color:var(--red)">${axPesos(tot.ars)}${tot.usd ? `<br>${axUSD(tot.usd)}` : ''}</div></div>
+      <div class="stat-card"><div class="stat-label">Total a cobrar (deuda + ${axFmtPeriodo(axPeriodo)})</div><div class="stat-value" style="font-size:16px">${axPesos(lista.filter(a => !axEsUSD(a)).reduce((s, a) => s + axAPagar(a), 0))}</div></div>
+    </div>
+    <div style="font-size:12px;color:var(--text-3);margin:-4px 0 12px">Desde ${axFmtPeriodo(AX_DEUDA_DESDE)} la deuda se arma sola con los meses que no quedaron pagados. La deuda anterior a eso se carga a mano desde la unidad (botón "+ Cargar deuda anterior"). Cada pago se aplica primero a lo más atrasado (primero sus intereses).</div>
+    ${lista.length ? `<div class="table-wrap ax-scroll"><table style="table-layout:auto">
+      <thead><tr><th>Unidad</th><th>Inquilino</th><th>Qué debe</th><th>Deuda anterior</th><th>${axFmtPeriodo(axPeriodo)}</th><th>Total</th><th></th></tr></thead>
+      <tbody>${filas}</tbody></table></div>` : '<div style="padding:30px;text-align:center;color:var(--text-3);font-size:13px">No hay deudores 🎉</div>'}`;
+}
+
+// Bloque "Deuda" dentro del detalle de la unidad
+function axRenderDeudaDetalle(a){
+  if(!axDeudaOK) return '';
+  const items = axDeudaItems(a), usd = axEsUSD(a);
+  const cobros = axCobros.filter(c => c.alquiler_id === a.id).slice(0, 3);
+  const tit = t => `<div style="font-size:11px;font-weight:500;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;margin:12px 0 6px">${t}</div>`;
+  let h = tit('Deuda de meses anteriores');
+  if(items.length === 0) h += '<div style="font-size:12px;color:var(--text-3)">No debe meses anteriores.</div>';
+  items.forEach(it => {
+    h += `<div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;padding:3px 0">
+      <span>${axH(it.concepto)} ${axFmtPeriodo(it.periodo)}${it.detalle ? ` <span style="color:var(--text-3)">(${axH(it.detalle)})</span>` : ''}
+        ${it.tipo === 'deuda' && !(Number(it.ref.pagado) > 0) ? `<a href="#" onclick="event.preventDefault();axBorrarDeuda(${it.ref.id})" title="Borrar esta deuda cargada a mano" style="color:var(--text-3);margin-left:4px">✕</a>` : ''}</span>
+      <span style="text-align:right"><b style="color:var(--red)">${axMonto(it.saldo, usd)}</b>${it.interes ? `<div style="font-size:11px;color:var(--text-2)">+ interés ${(it.tasa * 100).toLocaleString('es-AR')}% x ${it.meses}: ${axMonto(it.interes, usd)}</div>` : ''}</span></div>`;
+  });
+  if(items.length) h += `<div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-top:1px solid var(--border);margin-top:2px"><span>Total con este mes</span><b>${axMonto(axAPagar(a), usd)}</b></div>`;
+  h += `<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
+    <button class="btn-sm" onclick="axModalDeuda(${a.id})">+ Cargar deuda anterior</button>
+    <button class="btn-sm" onclick="axModalPago(${a.id})">Registrar pago (otro monto)</button></div>`;
+  if(cobros.length){
+    h += tit('Últimos pagos registrados');
+    cobros.forEach((c, i) => {
+      h += `<div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;padding:3px 0">
+        <span>${axFmtFecha(axParseFecha(c.fecha))} · ${axMonto(c.monto, usd)}</span>
+        ${i === 0 ? `<a href="#" onclick="event.preventDefault();axAnularCobro(${c.id})" style="color:var(--text-3)" title="Deshace este pago (vuelve todo como estaba antes)">Anular</a>` : ''}</div>`;
+    });
+  }
+  return h;
+}
+
+// ---------- registrar pagos (se aplican a lo más atrasado primero) ----------
+function axPagado(id){
+  const a = axAlq.find(x => x.id === id); if(!a) return;
+  if(!axDeudaOK || (axDeudaItems(a).length === 0 && axEtapa(axPagoDe(id)) !== 'parcial')) return axSetEtapa(id, 'pagado');
+  axModalPago(id);
+}
+// Reparte un monto: deuda más vieja primero (sus intereses y después el capital), y al final el mes actual
+function axDistribuir(a, monto){
+  let resto = Math.round(Number(monto) || 0);
+  const apps = [];
+  axDeudaItems(a).forEach(it => {
+    const interes = Math.min(resto, it.interes); resto -= interes;
+    const capital = Math.min(resto, it.saldo); resto -= capital;
+    if(interes || capital || it.tasa) apps.push({ it, interes, capital });
+  });
+  const mes = Math.min(resto, axSaldoMes(a)); resto -= mes;
+  return { apps, mes, sobra: resto };
+}
+function axModalPago(id){
+  const a = axAlq.find(x => x.id === id); if(!a) return;
+  const usd = axEsUSD(a), total = axAPagar(a);
+  document.getElementById('ax-modal')?.remove();
+  const m = document.createElement('div');
+  m.id = 'ax-modal';
+  m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px';
+  m.innerHTML = `<div style="background:var(--surface);border-radius:var(--radius);width:100%;max-width:520px;padding:20px 22px;max-height:90vh;overflow:auto">
+    <div style="font-family:'DM Serif Display',serif;font-size:18px;margin-bottom:2px">Registrar pago · ${axH(axNombreUnidad(a))}</div>
+    <div style="font-size:12px;color:var(--text-3);margin-bottom:12px">${axH(a.inquilino)} · debe en total <b>${axMonto(total, usd)}</b>. El pago se aplica primero a lo más atrasado.</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <label style="font-size:11px;color:var(--text-3)">Monto recibido (${usd ? 'USD' : '$'})<input id="ax-pago-monto" type="number" value="${total}" oninput="axPreviewPago(${a.id})" style="width:100%;padding:7px 8px;border:1px solid var(--border);border-radius:6px;font-family:inherit;font-size:14px;box-sizing:border-box"></label>
+      <label style="font-size:11px;color:var(--text-3)">Fecha del pago<input id="ax-pago-fecha" type="date" value="${axISO(new Date())}" style="width:100%;padding:7px 8px;border:1px solid var(--border);border-radius:6px;font-family:inherit;font-size:14px;box-sizing:border-box"></label>
+    </div>
+    <div id="ax-pago-prev" style="margin-top:12px"></div>
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button class="btn-sm" style="flex:1;padding:9px" onclick="document.getElementById('ax-modal').remove()">Cancelar</button>
+      <button class="btn-primary" style="flex:1" onclick="axGuardarPago(${a.id})">Registrar pago</button>
+    </div></div>`;
+  document.body.appendChild(m);
+  axPreviewPago(id);
+  document.getElementById('ax-pago-monto')?.select();
+}
+function axPreviewPago(id){
+  const a = axAlq.find(x => x.id === id); if(!a) return;
+  const usd = axEsUSD(a), monto = Number(document.getElementById('ax-pago-monto')?.value) || 0;
+  const d = axDistribuir(a, monto);
+  const fila = (k, v, falta) => `<div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;padding:3px 0"><span>${k}</span><span>${v}${falta > 0 ? ` <span style="color:var(--red)">(queda debiendo ${axMonto(falta, usd)})</span>` : ' <span style="color:var(--green)">✓</span>'}</span></div>`;
+  let h = '<div style="font-size:11px;font-weight:500;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Cómo se aplica</div>';
+  d.apps.forEach(({ it, interes, capital }) => {
+    if(it.interes) h += fila(`Intereses ${it.concepto.toLowerCase()} ${axFmtPeriodo(it.periodo)}`, axMonto(interes, usd), it.interes - interes);
+    h += fila(`${it.concepto} ${axFmtPeriodo(it.periodo)}`, axMonto(capital, usd), it.saldo - capital);
+  });
+  if(axSaldoMes(a) > 0) h += fila(`Alquiler ${axFmtPeriodo(axPeriodo)}`, axMonto(d.mes, usd), axSaldoMes(a) - d.mes);
+  if(d.sobra > 0) h += `<div style="font-size:12px;color:var(--orange);padding:3px 0">Sobran ${axMonto(d.sobra, usd)}: se registran como pagados de más en ${axFmtPeriodo(axPeriodo)}.</div>`;
+  document.getElementById('ax-pago-prev').innerHTML = h;
+}
+const AX_PREV_PAGO = ['monto_cobrado','etapa','estado','pagado_at','fecha_pago','monto_esperado','interes_devengado','interes_calc_periodo','interes_pagado'];
+const AX_PREV_DEUDA = ['pagado','interes_devengado','interes_calc_periodo','interes_pagado'];
+function axCopia(o, campos){ const r = {}; campos.forEach(k => r[k] = o[k] ?? null); return r; }
+async function axGuardarPago(id){
+  const a = axAlq.find(x => x.id === id); if(!a) return;
+  const monto = Math.round(Number(document.getElementById('ax-pago-monto')?.value) || 0);
+  const fecha = document.getElementById('ax-pago-fecha')?.value || axISO(new Date());
+  if(!(monto > 0)){ showToast('Poné el monto que pagó'); return; }
+  const d = axDistribuir(a, monto), ahora = new Date().toISOString(), detalle = [];
+  for(const { it, interes, capital } of d.apps){
+    const ref = it.ref, tabla = it.tipo === 'pago' ? 'pagos_mensuales' : 'deudas';
+    const prev = axCopia(ref, it.tipo === 'pago' ? AX_PREV_PAGO : AX_PREV_DEUDA);
+    // Se "congela" el interés devengado hasta hoy, así lo que se paga no se vuelve a cobrar
+    const upd = it.tasa ? { interes_devengado: it.devengado, interes_calc_periodo: axPeriodo, interes_pagado: (Number(ref.interes_pagado) || 0) + interes } : {};
+    if(it.tipo === 'pago'){
+      const cob = (Number(ref.monto_cobrado) || 0) + capital, completo = cob >= Number(ref.monto_esperado);
+      Object.assign(upd, { monto_cobrado: cob, etapa: completo ? 'pagado' : 'parcial', estado: completo ? 'pagado' : 'parcial', fecha_pago: fecha, ...(completo ? { pagado_at: ahora } : {}) });
+    } else upd.pagado = (Number(ref.pagado) || 0) + capital;
+    const { error } = await db.from(tabla).update(upd).eq('id', ref.id);
+    if(error){ showToast('Error: ' + error.message); return; }
+    Object.assign(ref, upd);
+    detalle.push({ tabla, id: ref.id, periodo: it.periodo, concepto: it.concepto, interes, capital, prev });
+  }
+  if(d.mes > 0 || d.sobra > 0){
+    const p = await axAsegurarPago(a); if(!p) return;
+    const prev = axCopia(p, AX_PREV_PAGO), tot = axCalculoMes(a).total;
+    const cob = (Number(p.monto_cobrado) || 0) + d.mes + d.sobra, completo = cob >= tot;
+    const upd = { monto_cobrado: cob, monto_esperado: tot, etapa: completo ? 'pagado' : 'parcial', estado: completo ? 'pagado' : 'parcial', fecha_pago: fecha, ...(completo ? { pagado_at: ahora } : {}) };
+    const { error } = await db.from('pagos_mensuales').update(upd).eq('id', p.id);
+    if(error){ showToast('Error: ' + error.message); return; }
+    Object.assign(p, upd);
+    detalle.push({ tabla: 'pagos_mensuales', id: p.id, periodo: axPeriodo, concepto: 'Alquiler', interes: 0, capital: d.mes + d.sobra, prev });
+  }
+  const { data, error } = await db.from('cobros').insert({ alquiler_id: a.id, fecha, monto, periodo: axPeriodo, detalle }).select().single();
+  if(error) showToast('El pago se aplicó pero no se guardó en el historial: ' + error.message);
+  else axCobros.unshift(data);
+  document.getElementById('ax-modal')?.remove();
+  delete axMsgEditado[a.id];
+  const queda = axAPagar(a);
+  showToast(`Pago de ${axMonto(monto, axEsUSD(a))} registrado ✓${queda > 0 ? ` · queda debiendo ${axMonto(queda, axEsUSD(a))}` : ''}`);
+  renderAlquileres();
+}
+// Deshace el último pago de la unidad (deja todo como estaba antes)
+async function axAnularCobro(cid){
+  const c = axCobros.find(x => x.id === cid); if(!c) return;
+  const a = axAlq.find(x => x.id === c.alquiler_id);
+  if(!confirm(`¿Anular el pago de ${axMonto(c.monto, a && axEsUSD(a))} del ${axFmtFecha(axParseFecha(c.fecha))}?\nLo que había pagado vuelve a figurar como deuda.`)) return;
+  for(const x of [...(c.detalle || [])].reverse()){
+    const { error } = await db.from(x.tabla).update(x.prev).eq('id', x.id);
+    if(error){ showToast('Error: ' + error.message); return; }
+  }
+  const { error } = await db.from('cobros').delete().eq('id', cid);
+  if(error){ showToast('Error: ' + error.message); return; }
+  showToast('Pago anulado');
+  loadAlquileres();
+}
+
+// ---------- cargar deuda a mano (lo anterior a noviembre 2026, expensas, etc.) ----------
+function axModalDeuda(id){
+  const a = axAlq.find(x => x.id === id); if(!a) return;
+  const [m0, y0] = axPeriodoAnterior(axPeriodo).split('-');
+  document.getElementById('ax-modal')?.remove();
+  const m = document.createElement('div');
+  m.id = 'ax-modal';
+  m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px';
+  const est = 'width:100%;padding:7px 8px;border:1px solid var(--border);border-radius:6px;font-family:inherit;font-size:13px;box-sizing:border-box';
+  m.innerHTML = `<div style="background:var(--surface);border-radius:var(--radius);width:100%;max-width:460px;padding:20px 22px">
+    <div style="font-family:'DM Serif Display',serif;font-size:18px;margin-bottom:2px">Cargar deuda · ${axH(axNombreUnidad(a))}</div>
+    <div style="font-size:12px;color:var(--text-3);margin-bottom:12px">${axH(a.inquilino)}. Cargá lo que quedó pendiente de cada mes (sin intereses: los intereses se calculan solos si la unidad tiene "Interés por mora").</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <label style="font-size:11px;color:var(--text-3)">Mes<input id="ax-d-mes" type="month" value="${y0}-${m0}" style="${est}"></label>
+      <label style="font-size:11px;color:var(--text-3)">Concepto<select id="ax-d-concepto" style="${est}">${AX_CONCEPTOS.map(c => `<option>${c}</option>`).join('')}</select></label>
+      <label style="font-size:11px;color:var(--text-3)">Monto pendiente (${axEsUSD(a) ? 'USD' : '$'})<input id="ax-d-monto" type="number" style="${est}"></label>
+      <label style="font-size:11px;color:var(--text-3)">Aclaración (opcional)<input id="ax-d-detalle" placeholder="Ej: saldo" style="${est}"></label>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button class="btn-sm" style="flex:1;padding:9px" onclick="document.getElementById('ax-modal').remove()">Cancelar</button>
+      <button class="btn-primary" style="flex:1" onclick="axGuardarDeuda(${a.id})">Guardar</button>
+    </div></div>`;
+  document.body.appendChild(m);
+  document.getElementById('ax-d-monto')?.focus();
+}
+async function axGuardarDeuda(id){
+  const a = axAlq.find(x => x.id === id); if(!a) return;
+  const mes = document.getElementById('ax-d-mes')?.value || '';
+  const monto = Math.round(Number(document.getElementById('ax-d-monto')?.value) || 0);
+  if(!/^\d{4}-\d{2}$/.test(mes) || !(monto > 0)){ showToast('Completá el mes y el monto'); return; }
+  const [y, m] = mes.split('-');
+  const fila = { alquiler_id: a.id, inquilino: a.inquilino || null, periodo: `${m}-${y}`, concepto: document.getElementById('ax-d-concepto').value,
+    detalle: document.getElementById('ax-d-detalle').value.trim() || null, monto, moneda: axEsUSD(a) ? 'USD' : 'ARS' };
+  const { data, error } = await db.from('deudas').insert(fila).select().single();
+  if(error){ showToast('Error: ' + error.message); return; }
+  axDeudas.push(data);
+  document.getElementById('ax-modal')?.remove();
+  delete axMsgEditado[a.id];
+  showToast('Deuda cargada ✓');
+  renderAlquileres();
+}
+async function axBorrarDeuda(did){
+  const d = axDeudas.find(x => x.id === did); if(!d) return;
+  if(!confirm(`¿Borrar la deuda de ${d.concepto} ${axFmtPeriodo(d.periodo)} por ${axPesos(d.monto)}?`)) return;
+  const { error } = await db.from('deudas').delete().eq('id', did);
+  if(error){ showToast('Error: ' + error.message); return; }
+  axDeudas = axDeudas.filter(x => x.id !== did);
+  delete axMsgEditado[d.alquiler_id];
+  showToast('Deuda borrada');
+  renderAlquileres();
+}
+
 // ---------- acciones ----------
 function axCambiarMes(delta){
   const [m, y] = axPeriodo.split('-').map(Number);
@@ -682,7 +1001,7 @@ async function axAsegurarPago(a){
 async function axSetEtapa(id, etapa, desdeSelector, enGrupo){
   if(!axSchemaOK){ showToast('Primero hay que correr el script SQL'); return; }
   const a = axAlq.find(x => x.id === id); if(!a) return;
-  const orden = ['sin_avisar','avisado','pagado','rendido'];
+  const orden = ['sin_avisar','avisado','parcial','pagado','rendido'];
   if(!desdeSelector && axPagoDe(id) && orden.indexOf(etapa) <= orden.indexOf(axEtapa(axPagoDe(id)))) return;
   if(etapa === 'avisado' && !desdeSelector && !enGrupo){
     const otras = axGrupoInquilino(a).slice(1).filter(x => axEtapa(axPagoDe(x.id)) === 'sin_avisar');
@@ -694,18 +1013,18 @@ async function axSetEtapa(id, etapa, desdeSelector, enGrupo){
   const c = axCalculoMes(a);
   const upd = { etapa };
   if(etapa === 'sin_avisar'){
-    Object.assign(upd, { avisado_at: null, pagado_at: null, rendido_at: null });
+    Object.assign(upd, { avisado_at: null, pagado_at: null, rendido_at: null, monto_cobrado: null });
     if(p.estado === 'pagado' || p.estado === 'pago-pendiente') upd.estado = 'pendiente';
   }
   if(etapa === 'avisado'){
     Object.assign(upd, { avisado_at: ahora, fecha_envio: ahora, monto_esperado: c.total,
       mensaje_wa: document.getElementById(`ax-msg-${id}`)?.value || axMsgEditado[id] || axMensaje(a) });
     if(!p.estado || p.estado === 'pendiente') upd.estado = 'pago-pendiente';
-    if(desdeSelector) Object.assign(upd, { pagado_at: null, rendido_at: null, estado: 'pago-pendiente' });
+    if(desdeSelector) Object.assign(upd, { pagado_at: null, rendido_at: null, estado: 'pago-pendiente', monto_cobrado: null });
   }
   if(etapa === 'pagado'){
     Object.assign(upd, { pagado_at: ahora, estado: 'pagado', fecha_pago: p.fecha_pago || axISO(new Date()),
-      monto_cobrado: p.monto_cobrado || c.total });
+      monto_cobrado: Math.max(Number(p.monto_cobrado) || 0, c.total), monto_esperado: c.total });
     if(desdeSelector) upd.rendido_at = null;
   }
   if(etapa === 'rendido') Object.assign(upd, { rendido_at: ahora });
@@ -837,6 +1156,7 @@ const AX_EDIT = [
   ['ajuste', 'Índice de ajuste', ['ICL','IPC']], ['mes_aumento', 'Mes aumento (texto)', 'text'], ['fecha_ultimo_ajuste', 'Último aumento aplicado', 'date'],
   ['moneda', 'Moneda', ['ARS','USD']], ['iva_pct', 'IVA (se suma al alquiler)', ['21%','10,5%']], ['alq_inicial', 'Alquiler inicial', 'number'], ['alq_actual', 'Alquiler actual ($)', 'number'],
   ['alq_actual_usd', 'Alquiler actual (USD)', 'number'], ['comision_pct', 'Comisión MAO (%)', 'number'],
+  ['interes_mensual', 'Interés por mora (% por mes)', 'number'],
 ];
 function axFechaParaInput(v){ return axISO(axParseFecha(v)) || ''; }
 // Guarda la fecha con el mismo formato que ya usa la base (DD/MM/AAAA o AAAA-MM-DD)
@@ -852,7 +1172,7 @@ function axEditarUnidad(id){
   document.getElementById('ax-modal')?.remove();
   const campo = ([k, label, tipo]) => {
     let v = a[k] ?? '';
-    if(k === 'comision_pct' && v !== '') v = Math.round(Number(v) * 10000) / 100;
+    if((k === 'comision_pct' || k === 'interes_mensual') && v !== '') v = Math.round(Number(v) * 10000) / 100;
     if(tipo === 'date') v = axFechaParaInput(v);
     if(k === 'tipo_contrato') v = axTipoContrato(a);
     if(k === 'moneda') v = axEsUSD(a) ? 'USD' : 'ARS';
@@ -882,7 +1202,7 @@ async function axGuardarUnidad(id){
     if(tipo === 'number') v = v === '' ? null : Number(v.replace(',', '.'));
     else if(tipo === 'date') v = axFechaParaBase(v, k);
     else v = v === '' ? null : v;
-    if(k === 'comision_pct' && v !== null) v = v / 100;
+    if((k === 'comision_pct' || k === 'interes_mensual') && v !== null) v = v / 100;
     if(k === 'iva_pct') v = v === '21%' ? 0.21 : v === '10,5%' ? 0.105 : null;
     const antes = a[k] ?? null;
     if(String(antes ?? '') !== String(v ?? '')) upd[k] = v;
@@ -919,5 +1239,5 @@ document.addEventListener('keydown', ev => {
   } else if(id && ev.key === 'Enter'){ ev.preventDefault(); axToggle(id); }
   else if(id && (ev.key === 'w' || ev.key === 'W')){ axWhatsApp(id); }
   else if(id && (ev.key === 'a' || ev.key === 'A')){ axSetEtapa(id, 'avisado'); }
-  else if(id && (ev.key === 'p' || ev.key === 'P')){ axSetEtapa(id, 'pagado'); }
+  else if(id && (ev.key === 'p' || ev.key === 'P')){ axPagado(id); }
 });
