@@ -175,7 +175,7 @@ function axDeudaItems(a){
 function axDeudaTotal(a){ return axDeudaItems(a).reduce((s, it) => s + it.total, 0); }
 // Lo que falta pagar del mes (si ya pagó una parte, se descuenta)
 function axSaldoMes(a){
-  const p = axPagoDe(a.id), e = axEtapa(p), total = axCalculoMes(a).total;
+  const p = axPagoDe(a.id), e = axEtapa(p), total = axTotalMes(a);
   if(!axActiva(a) || e === 'pagado' || e === 'rendido') return 0;
   return Math.max(0, total - (e === 'parcial' ? Number(p.monto_cobrado) || 0 : 0));
 }
@@ -281,6 +281,10 @@ function axLineasUnidad(a, conNombre){
     txt += `${titulo}${conNombre ? ':' : ''} ${axMonto(c.base, usd)}.-\n`;
   }
   if(c.iva) txt += `IVA ${(c.ivaPct * 100).toLocaleString('es-AR')}%: ${axMonto(c.iva, usd)}.-\nTotal con IVA ${axMonto(c.total, usd)}.-\n`;
+  const extra = axExtraMes(a);
+  if(extra) txt += `Menos expensas extraordinarias: −${axMonto(extra, usd)}.-\nTotal ${axMonto(axTotalMes(a), usd)}.-\n`;
+  const bol = axBoletasEnviadas(a);
+  if(bol.length) txt += `Te adjunto ${bol.length > 1 ? 'las boletas' : 'la boleta'} de ${axLista(bol)} de ${mes} para que ${bol.length > 1 ? 'las abones' : 'la abones'}.\n`;
   const p = axPagoDe(a.id);
   if(['pagado','rendido'].includes(axEtapa(p))) txt += `Abonado ✓\n`;
   else if(axEtapa(p) === 'parcial' && Number(p.monto_cobrado) > 0) txt += `Pagado a cuenta: ${axMonto(p.monto_cobrado, usd)}.- · Resta ${axMonto(axSaldoMes(a), usd)}.-\n`;
@@ -342,7 +346,7 @@ async function loadAlquileres(){
   axAncho();
   if(!axPeriodo) axPeriodo = axHoyPeriodo();
   document.getElementById('main').innerHTML = '<div class="loading"><div class="spinner"></div><span>Cargando alquileres...</span></div>';
-  const [r1, r2, r3, r4, r5, r6, r7] = await Promise.all([
+  const [r1, r2, r3, r4, r5, r6, r7, r8] = await Promise.all([
     db.from('alquileres').select('*').order('id'),
     db.from('pagos_mensuales').select('*').eq('periodo', axPeriodo),
     db.from('ajustes_icl').select('*').eq('periodo', axPeriodo),
@@ -351,12 +355,14 @@ async function loadAlquileres(){
     db.from('pagos_mensuales').select('*').in('etapa', ['sin_avisar', 'avisado', 'parcial']),
     db.from('deudas').select('*').order('id'),
     db.from('cobros').select('*').order('id', { ascending: false }).limit(500),
+    db.from('servicios_mes').select('*').eq('periodo', axPeriodo),
   ]);
   if(r1.error){ document.getElementById('main').innerHTML = `<div class="loading"><span style="color:var(--red)">❌ ${axH(r1.error.message)}</span></div>`; return; }
   axAlq = r1.data || []; axPagos = r2.data || []; axProps = r4.data || [];
   axSchemaOK = !r3.error;
   axAjustes = r3.error ? [] : (r3.data || []);
   axDeudaOK = !r6.error && !r7.error;
+  axServOK = !r8.error; axServ = r8.data || [];
   axPend = r5.data || []; axDeudas = r6.data || []; axCobros = r7.data || [];
   if(axSchemaOK) await axGenerarMes();
   renderAlquileres();
@@ -460,7 +466,7 @@ function axTotales(lista){
   const t = { ars: 0, usd: 0, cobArs: 0, cobUsd: 0, hon: 0, honCob: 0, n: 0, deuda: 0, deudaUsd: 0, deudores: 0, etapas: { sin_avisar: 0, avisado: 0, parcial: 0, pagado: 0, rendido: 0 } };
   lista.forEach(a => {
     const p = axPagoDe(a.id), e = axEtapa(p), usd = axEsUSD(a);
-    const c = axCalculoMes(a), monto = c.total;
+    const c = axCalculoMes(a), monto = axTotalMes(a);
     // Honorarios MAO del mes (sobre el neto, en pesos)
     const hon = usd ? 0 : axHonorarios(a, c.base);
     t.hon += hon;
@@ -499,6 +505,7 @@ function axFiltrar(lista){
 
 function renderAlquileres(){
   if(axTab === 'deudores') return axRenderDeudores();
+  if(axTab === 'servicios') return axRenderServicios();
   const activasTab = axUnidadesTab(axTab).filter(axActiva);
   const vacantes = axUnidadesTab(axTab).filter(a => !axActiva(a));
   const tot = axTotales(activasTab);
@@ -596,7 +603,7 @@ function axRenderFila(a){
       <td style="background:${et.bg}" title="${axH(axNombreUnidad(a))}"><b style="font-weight:500">${axH(axNombreUnidad(a))}</b>${aumentoIcon}${axVence(a)}</td>
       <td style="background:${et.bg}" title="${axH(a.inquilino)}">${axH(a.inquilino)}${tel ? '' : ' <span title="Falta teléfono">📵</span>'}${axGrupoInquilino(a).length > 1 ? ` <span title="Un solo WhatsApp para sus ${axGrupoInquilino(a).length} unidades" style="font-size:11px;color:var(--blue)">👥${axGrupoInquilino(a).length}</span>` : ''}</td>
       <td style="background:${et.bg};font-size:11px;color:var(--text-2)" title="${axH(axTipoContrato(a))}">${axH(axTipoContrato(a) ? axTipoContrato(a).charAt(0) + axTipoContrato(a).slice(1).toLowerCase() : '—')}</td>
-      <td style="background:${et.bg};font-weight:500">${axMonto(c.total, c.usd)}${comp}${e === 'parcial' ? `<div style="font-size:11px;font-weight:400;color:#8A4A00">resta ${axMonto(axSaldoMes(a), c.usd)}</div>` : ''}${axDeudaTotal(a) > 0 ? `<div style="font-size:11px;font-weight:500;color:var(--red)" title="Deuda de meses anteriores (con intereses)">💸 debe ${axMonto(axDeudaTotal(a), c.usd)}</div>` : ''}</td>
+      <td style="background:${et.bg};font-weight:500">${axMonto(axTotalMes(a), c.usd)}${comp}${axExtraMes(a) ? `<div style="font-size:11px;font-weight:400;color:var(--text-2)" title="Se descuentan expensas extraordinarias">− exp. extraord. ${axMonto(axExtraMes(a), c.usd)}</div>` : ''}${e === 'parcial' ? `<div style="font-size:11px;font-weight:400;color:#8A4A00">resta ${axMonto(axSaldoMes(a), c.usd)}</div>` : ''}${axDeudaTotal(a) > 0 ? `<div style="font-size:11px;font-weight:500;color:var(--red)" title="Deuda de meses anteriores (con intereses)">💸 debe ${axMonto(axDeudaTotal(a), c.usd)}</div>` : ''}</td>
       <td style="background:${et.bg}"><span class="badge" style="background:${et.pill};color:${et.color}">${et.label}</span></td>
       <td style="background:${et.bg}" onclick="event.stopPropagation()">
         <div style="display:flex;gap:4px">
@@ -626,6 +633,7 @@ function axRenderDetalle(a){
       ${c.lineas ? c.lineas.map(l => linea(`${l.dias} días x ${axMonto(l.diario, usd)}`, axMonto(l.subtotal, usd))).join('') : ''}
       ${c.iva ? linea('Alquiler (neto)', axMonto(c.base, usd)) + linea(`IVA ${(c.ivaPct * 100).toLocaleString('es-AR')}%`, axMonto(c.iva, usd)) : ''}
       ${linea(c.iva ? 'Total con IVA' : 'Total alquiler', `<b>${axMonto(c.total, usd)}</b>`)}
+      ${axExtraMes(a) ? linea('Menos expensas extraordinarias', `−${axMonto(axExtraMes(a), usd)}`) + linea('Total a cobrar', `<b>${axMonto(axTotalMes(a), usd)}</b>`) : ''}
       ${honor ? linea('Honorarios MAO', axPesos(honor)) : ''}
       ${axRenderDeudaDetalle(a)}
       <div style="font-size:11px;font-weight:500;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;margin:12px 0 6px">Datos</div>
@@ -738,10 +746,10 @@ function axAvisosBase(){
 }
 function axDeudores(){ return axAlq.filter(a => !axEsHija(a) && axDeudaTotal(a) > 0); }
 function axTabsHTML(){
-  const cuenta = tab => tab === 'deudores' ? axDeudores().length : axUnidadesTab(tab).filter(axActiva).length;
+  const cuenta = tab => tab === 'deudores' ? axDeudores().length : tab === 'servicios' ? axAlq.filter(a => axActiva(a) && axServPasa(a, 'comprobante') && axServiciosDe(a).length).length : axUnidadesTab(tab).filter(axActiva).length;
   return `<div style="display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:16px">
-      ${[['db','DB'],['dbgb','DB + GB'],['prop','Propietarios'],['deudores','💸 Deudores']].map(([k,l]) => `
-        <button onclick="axTab='${k}';axOpen=null;axFiltroEtapa='';renderAlquileres()" style="padding:10px 18px;border:none;background:none;cursor:pointer;font-family:inherit;font-size:14px;font-weight:${axTab===k?600:400};color:${axTab===k?'var(--text)':'var(--text-3)'};border-bottom:2px solid ${axTab===k?'var(--accent)':'transparent'};margin-bottom:-1px;${k === 'deudores' ? 'margin-left:auto' : ''}">${l} <span style="font-size:11px;color:${k === 'deudores' && cuenta(k) ? 'var(--red)' : 'var(--text-3)'}">${cuenta(k)}</span></button>`).join('')}
+      ${[['db','DB'],['dbgb','DB + GB'],['prop','Propietarios'],['servicios','🧾 Impuestos y servicios'],['deudores','💸 Deudores']].map(([k,l]) => `
+        <button onclick="axTab='${k}';axOpen=null;axFiltroEtapa='';renderAlquileres()" style="padding:10px 18px;border:none;background:none;cursor:pointer;font-family:inherit;font-size:14px;font-weight:${axTab===k?600:400};color:${axTab===k?'var(--text)':'var(--text-3)'};border-bottom:2px solid ${axTab===k?'var(--accent)':'transparent'};margin-bottom:-1px;${k === 'servicios' ? 'margin-left:auto' : ''}" ${k === 'servicios' ? 'title="Unidades con boletas o comprobantes pendientes"' : ''}>${l} <span style="font-size:11px;color:${k === 'deudores' && cuenta(k) ? 'var(--red)' : 'var(--text-3)'}">${cuenta(k)}</span></button>`).join('')}
     </div>`;
 }
 
@@ -890,7 +898,7 @@ async function axGuardarPago(id){
   }
   if(d.mes > 0 || d.sobra > 0){
     const p = await axAsegurarPago(a); if(!p) return;
-    const prev = axCopia(p, AX_PREV_PAGO), tot = axCalculoMes(a).total;
+    const prev = axCopia(p, AX_PREV_PAGO), tot = axTotalMes(a);
     const cob = (Number(p.monto_cobrado) || 0) + d.mes + d.sobra, completo = cob >= tot;
     const upd = { monto_cobrado: cob, monto_esperado: tot, etapa: completo ? 'pagado' : 'parcial', estado: completo ? 'pagado' : 'parcial', fecha_pago: fecha, ...(completo ? { pagado_at: ahora } : {}) };
     const { error } = await db.from('pagos_mensuales').update(upd).eq('id', p.id);
@@ -974,6 +982,190 @@ async function axBorrarDeuda(did){
   renderAlquileres();
 }
 
+// ---------- impuestos y servicios ----------
+// TGI, Aguas, EPE y Gas: los paga el inquilino; MAO le manda la boleta y espera el comprobante.
+// Expensas: el inquilino las paga y manda el comprobante; las extraordinarias se descuentan del alquiler del mes.
+// API: la paga MAO y se descuenta al propietario (queda registrada para la rendición).
+const AX_SERV = [
+  { k: 'TGI',      label: 'TGI',      tipo: 'boleta',   cuenta: a => a.tgi_cuenta || a.tgi_gestion },
+  { k: 'AGUAS',    label: 'Aguas',    tipo: 'boleta',   cuenta: a => a.aguas },
+  { k: 'EPE',      label: 'EPE',      tipo: 'boleta',   cuenta: a => a.epe_cliente },
+  { k: 'GAS',      label: 'Gas',      tipo: 'boleta',   cuenta: a => a.gas_cliente },
+  { k: 'API',      label: 'API',      tipo: 'api',      cuenta: a => a.api },
+  { k: 'EXPENSAS', label: 'Expensas', tipo: 'expensas', cuenta: a => !!(Number(a.expensas_monto) > 0 || a.adm_contacto) },
+];
+let axServ = [], axServOK = true, axServFiltro = '', axServTab = '';
+// Servicios de la unidad: los elegidos a mano (columna "servicios") o los que tienen número de cuenta
+function axServiciosDe(a){
+  if(a.servicios !== null && a.servicios !== undefined) return AX_SERV.filter(s => String(a.servicios).split(',').includes(s.k));
+  return AX_SERV.filter(s => s.cuenta(a));
+}
+function axServDe(id, k){ return axServ.find(x => x.alquiler_id === id && x.servicio === k && x.periodo === axPeriodo); }
+function axExtraMes(a){ return axServOK ? Math.round(Number(axServDe(a.id, 'EXPENSAS')?.extraordinarias) || 0) : 0; }
+// Lo que se le cobra al inquilino este mes (alquiler con IVA − expensas extraordinarias)
+function axTotalMes(a){ return Math.max(0, axCalculoMes(a).total - axExtraMes(a)); }
+function axLista(arr){ return arr.length > 1 ? arr.slice(0, -1).join(', ') + ' y ' + arr[arr.length - 1] : arr[0] || ''; }
+function axBoletasEnviadas(a){ return axServiciosDe(a).filter(s => s.tipo === 'boleta' && axServDe(a.id, s.k)?.boleta_enviada && !axServDe(a.id, s.k)?.pagado).map(s => s.label); }
+// API pagada por adelantado (en general el año completo): columna api_pagada_hasta = 'MM-AAAA'
+function axAPICubierta(a){ return !!a.api_pagada_hasta && axPeriodoNum(axPeriodo) <= axPeriodoNum(a.api_pagada_hasta); }
+// Qué le falta mandar al inquilino
+function axServFaltan(a){
+  return axServiciosDe(a).filter(s => s.tipo !== 'api' && !axServDe(a.id, s.k)?.pagado && !axServDe(a.id, s.k)?.no_corresponde);
+}
+
+function axRenderServicios(){
+  const base = axAlq.filter(a => axActiva(a) && axServiciosDe(a).length && (!axServTab || axTabDe(a) === axServTab));
+  const q = axNorm(axBusqueda);
+  const cuenta = f => base.filter(a => axServPasa(a, f)).length;
+  const lista = base.filter(a => axServPasa(a, axServFiltro) && (!q || axNorm(`${a.unidad} ${axEdificio(a)} ${a.inquilino} ${a.propietario}`).includes(q)))
+    .sort((x, y) => axNombreUnidad(x).localeCompare(axNombreUnidad(y), 'es'));
+  const chip = (val, label) => `<button class="btn-sm" onclick="axServFiltro='${val}';renderAlquileres()" style="${axServFiltro === val ? 'background:var(--text);color:white;border-color:var(--text)' : ''}">${label}${val ? ` · ${cuenta(val)}` : ''}</button>`;
+  const chipTab = (val, label) => `<button class="btn-sm" onclick="axServTab='${val}';renderAlquileres()" style="${axServTab === val ? 'border-color:var(--accent);color:var(--accent);font-weight:600' : ''}">${label}</button>`;
+  const apiTotal = base.reduce((s, a) => s + (Number(axServDe(a.id, 'API')?.monto) || 0), 0);
+  const extraTotal = base.reduce((s, a) => s + axExtraMes(a), 0);
+  const th = AX_SERV.map(s => `<th style="width:${s.tipo === 'boleta' ? 88 : 130}px">${s.label}</th>`).join('');
+  document.getElementById('main').innerHTML = `
+    ${axHeaderHTML()}
+    ${axAvisosBase()}
+    ${axTabsHTML()}
+    ${!axServOK ? `<div style="background:var(--red-bg);color:var(--red);border-radius:var(--radius);padding:12px 16px;margin-bottom:16px;font-size:13px">⚠ Para usar esta pestaña falta correr el script <b>sql/2026-10_servicios.sql</b> en Supabase → SQL Editor.</div>` : ''}
+    <div class="stats" style="grid-template-columns:repeat(5,1fr)">
+      <div class="stat-card"><div class="stat-label">Unidades con servicios</div><div class="stat-value">${base.length}</div></div>
+      <div class="stat-card"><div class="stat-label">Falta enviar boleta</div><div class="stat-value">${cuenta('boleta')}</div></div>
+      <div class="stat-card"><div class="stat-label">Falta comprobante</div><div class="stat-value">${cuenta('comprobante')}</div></div>
+      <div class="stat-card"><div class="stat-label">Exp. extraordinarias</div><div class="stat-value" style="font-size:14px">${axPesos(extraTotal)}<div style="font-size:11px;font-weight:400;color:var(--text-2)">se descuentan del alquiler</div></div></div>
+      <div class="stat-card"><div class="stat-label">API pagada por MAO</div><div class="stat-value" style="font-size:14px">${axPesos(apiTotal)}<div style="font-size:11px;font-weight:400;color:var(--text-2)">se descuenta al propietario</div></div></div>
+    </div>
+    <div class="toolbar" style="flex-wrap:wrap">
+      <div class="search-wrap"><span class="search-icon">⌕</span><input id="ax-buscar" placeholder="Buscar unidad, inquilino, propietario..." value="${axH(axBusqueda)}" oninput="axBusqueda=this.value;renderAlquileres();const i=document.getElementById('ax-buscar');i.focus();i.setSelectionRange(i.value.length,i.value.length)"></div>
+      ${chipTab('', 'Todos')}${chipTab('db', 'DB')}${chipTab('dbgb', 'DB + GB')}${chipTab('prop', 'Propietarios')}
+      <span style="width:12px"></span>
+      ${chip('', 'Todas')}${chip('boleta', '📤 Falta enviar boleta')}${chip('comprobante', 'Falta comprobante')}${chip('expensas', 'Falta expensas')}${chip('extra', 'Con extraordinarias')}${chip('api', 'API a pagar')}
+    </div>
+    <div style="font-size:11px;color:var(--text-3);margin:-4px 0 12px">📤 = le mandaste la boleta · ✓ = te mandó el comprobante (pagado) · — = no corresponde este mes. Las boletas marcadas 📤 se nombran en el WhatsApp del mes. Los servicios de cada unidad salen de los números de cuenta cargados; con ⚙ los cambiás.</div>
+    <div class="table-wrap ax-scroll"><table style="table-layout:auto">
+      <thead><tr><th>Unidad</th><th>Inquilino</th>${th}<th></th></tr></thead>
+      <tbody>${lista.map(axRenderServFila).join('') || '<tr><td colspan="10" style="padding:30px;text-align:center;color:var(--text-3)">No hay unidades para mostrar</td></tr>'}</tbody>
+    </table></div>`;
+}
+function axServPasa(a, f){
+  const tiene = axServiciosDe(a), r = k => axServDe(a.id, k) || {};
+  if(f === 'boleta') return tiene.some(s => s.tipo === 'boleta' && !r(s.k).boleta_enviada && !r(s.k).pagado && !r(s.k).no_corresponde);
+  if(f === 'comprobante') return tiene.some(s => s.tipo === 'boleta' && !r(s.k).pagado && !r(s.k).no_corresponde);
+  if(f === 'expensas') return tiene.some(s => s.k === 'EXPENSAS') && !r('EXPENSAS').pagado && !r('EXPENSAS').no_corresponde;
+  if(f === 'extra') return axExtraMes(a) > 0;
+  if(f === 'api') return tiene.some(s => s.k === 'API') && !axAPICubierta(a) && !r('API').pagado && !r('API').no_corresponde;
+  return true;
+}
+function axRenderServFila(a){
+  const tiene = axServiciosDe(a).map(s => s.k);
+  const td = 'style="padding:6px;font-size:12px;vertical-align:middle;white-space:nowrap"';
+  const btn = (on, label, onclick, title, color) => `<button class="btn-sm" onclick="${onclick}" title="${axH(title)}" style="padding:3px 7px;${on ? `background:${color};color:white;border-color:${color}` : ''}">${label}</button>`;
+  const celdas = AX_SERV.map(s => {
+    if(!tiene.includes(s.k)) return `<td ${td}><span style="color:var(--border)">·</span></td>`;
+    const r = axServDe(a.id, s.k) || {}, cta = s.cuenta(a), tit = `${s.label}${cta && cta !== true ? ' · cuenta ' + cta : ''}`;
+    const nc = btn(r.no_corresponde, '—', `axServToggle(${a.id},'${s.k}','no_corresponde')`, 'No corresponde este mes', '#888780');
+    if(r.no_corresponde) return `<td ${td}>${nc}</td>`;
+    if(s.tipo === 'boleta') return `<td ${td}><div style="display:flex;gap:3px">
+      ${btn(r.boleta_enviada, '📤', `axServToggle(${a.id},'${s.k}','boleta_enviada')`, tit + ': le mandé la boleta', '#185FA5')}
+      ${btn(r.pagado, '✓', `axServToggle(${a.id},'${s.k}','pagado')`, tit + ': me mandó el comprobante', '#3B6D11')}${nc}</div></td>`;
+    const inp = (campo, val, ph) => `<input type="number" value="${val || ''}" placeholder="${ph}" onchange="axServMonto(${a.id},'${s.k}','${campo}',this.value)" style="width:64px;padding:4px 5px;border:1px solid var(--border);border-radius:6px;font-family:inherit;font-size:12px;background:var(--surface)">`;
+    if(s.tipo === 'expensas') return `<td ${td}><div style="display:flex;gap:3px;align-items:center">
+      ${btn(r.pagado, '✓', `axServToggle(${a.id},'EXPENSAS','pagado')`, 'Me mandó las expensas pagas', '#3B6D11')}
+      ${inp('extraordinarias', r.extraordinarias, 'Extra $')}${nc}</div></td>`;
+    if(axAPICubierta(a)) return `<td ${td}><span title="${axH(tit)}" style="color:var(--green)">✓ anual hasta ${axFmtPeriodo(a.api_pagada_hasta)}</span> <a href="#" onclick="event.preventDefault();axAPIAnual(${a.id})" title="Cambiar" style="color:var(--text-3)">✎</a></td>`;
+    return `<td ${td}><div style="display:flex;gap:3px;align-items:center">
+      ${btn(false, 'Anual', `axAPIAnual(${a.id})`, 'Está pagada por adelantado (ej. todo el año)', '')}
+      ${btn(r.pagado, '✓', `axServToggle(${a.id},'API','pagado')`, tit + ': la pagué yo (se descuenta al propietario)', '#3B6D11')}
+      ${inp('monto', r.monto, 'Monto $')}${nc}</div></td>`;
+  }).join('');
+  const faltan = axServFaltan(a);
+  return `<tr style="cursor:default">
+    <td style="padding:6px;font-size:12px;white-space:normal;min-width:150px"><b style="font-weight:500">${axH(axNombreUnidad(a))}</b> <a href="#" onclick="event.preventDefault();axEditarServicios(${a.id})" title="Elegir qué servicios tiene esta unidad" style="color:var(--text-3);text-decoration:none">⚙</a><div style="font-size:11px;color:var(--text-3)">${axH(a.propietario || '')}</div></td>
+    <td style="padding:6px;font-size:12px;white-space:normal;max-width:130px">${axH(a.inquilino)}</td>${celdas}
+    <td ${td}>${faltan.length ? `<button class="btn-sm" onclick="axServRecordatorio(${a.id})" title="WhatsApp recordando: ${axH(axLista(faltan.map(s => s.label)))}" style="color:#128C4A;border-color:#9ED9B5">💬 Recordar</button>` : '<span style="color:var(--green)">✓ completo</span>'}</td></tr>`;
+}
+async function axServGuardar(id, k, cambios){
+  if(!axServOK){ showToast('Primero hay que correr el script sql/2026-10_servicios.sql'); return false; }
+  const r = axServDe(id, k);
+  const fila = { alquiler_id: id, periodo: axPeriodo, servicio: k, ...cambios, updated_at: new Date().toISOString() };
+  const { data, error } = await db.from('servicios_mes').upsert(fila, { onConflict: 'alquiler_id,periodo,servicio' }).select().single();
+  if(error){ showToast('Error: ' + error.message); return false; }
+  if(r) Object.assign(r, data); else axServ.push(data);
+  delete axMsgEditado[id];
+  return true;
+}
+async function axServToggle(id, k, campo){
+  const r = axServDe(id, k) || {};
+  if(await axServGuardar(id, k, { [campo]: !r[campo] })) renderAlquileres();
+}
+async function axServMonto(id, k, campo, val){
+  const n = val === '' ? null : Math.round(Number(String(val).replace(',', '.')) || 0);
+  // Cargar el monto de la API implica que ya se pagó
+  const extra = k === 'API' && n ? { pagado: true } : {};
+  if(!(await axServGuardar(id, k, { [campo]: n, ...extra }))) return;
+  // El descuento de extraordinarias cambia lo que se le cobra al inquilino
+  if(k === 'EXPENSAS'){
+    const a = axAlq.find(x => x.id === id), p = axPagoDe(id);
+    if(a && p && ['sin_avisar','avisado'].includes(axEtapa(p))){
+      const monto = axTotalMes(a);
+      await db.from('pagos_mensuales').update({ monto_esperado: monto }).eq('id', p.id);
+      p.monto_esperado = monto;
+    }
+    if(n) showToast(`Se descuentan ${axPesos(n)} del alquiler de ${axFmtPeriodo(axPeriodo)}`);
+  }
+  renderAlquileres();
+}
+async function axAPIAnual(id){
+  const a = axAlq.find(x => x.id === id); if(!a) return;
+  const [, y] = axPeriodo.split('-');
+  const r = prompt(`API de ${axNombreUnidad(a)}: ¿hasta qué mes está pagada? (mes-año, ej. 12-${y})\nDejalo vacío para quitarlo.`, a.api_pagada_hasta || `12-${y}`);
+  if(r === null) return;
+  const t = r.trim().replace('/', '-');
+  const m = t.match(/^(\d{1,2})-(\d{4})$/);
+  if(t && !m){ showToast('Escribilo como mes-año, ej. 12-2026'); return; }
+  const val = m ? `${m[1].padStart(2, '0')}-${m[2]}` : null;
+  const { error } = await db.from('alquileres').update({ api_pagada_hasta: val }).eq('id', id);
+  if(error){ showToast('Error: ' + error.message); return; }
+  a.api_pagada_hasta = val;
+  showToast(val ? `API pagada hasta ${axFmtPeriodo(val)} ✓` : 'API anual quitada');
+  renderAlquileres();
+}
+function axServRecordatorio(id){
+  const a = axAlq.find(x => x.id === id); if(!a) return;
+  const tel = axTelGrupo(a);
+  if(!tel){ showToast('Falta el teléfono del inquilino'); return; }
+  const faltan = axServFaltan(a).map(s => s.k === 'EXPENSAS' ? 'las expensas' : s.label);
+  const msg = `Hola ${(a.inquilino || '').trim()}, buen día! ¿Cómo estás?\nTe recuerdo que me falta el comprobante de pago de ${axLista(faltan)} de ${axFmtPeriodo(axPeriodo)} (${axNombreUnidad(a)}). Cuando puedas me lo mandás. ¡Gracias!`;
+  window.open(`https://wa.me/${tel}?text=${encodeURIComponent(msg)}`, '_blank');
+}
+function axEditarServicios(id){
+  const a = axAlq.find(x => x.id === id); if(!a) return;
+  const tiene = axServiciosDe(a).map(s => s.k);
+  document.getElementById('ax-modal')?.remove();
+  const m = document.createElement('div');
+  m.id = 'ax-modal';
+  m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px';
+  m.innerHTML = `<div style="background:var(--surface);border-radius:var(--radius);width:100%;max-width:400px;padding:20px 22px">
+    <div style="font-family:'DM Serif Display',serif;font-size:18px;margin-bottom:4px">Servicios · ${axH(axNombreUnidad(a))}</div>
+    <div style="font-size:12px;color:var(--text-3);margin-bottom:12px">Marcá los impuestos y servicios que se controlan en esta unidad.</div>
+    ${AX_SERV.map(s => `<label style="display:flex;gap:8px;align-items:center;font-size:13px;padding:5px 0"><input type="checkbox" class="ax-serv-chk" value="${s.k}" ${tiene.includes(s.k) ? 'checked' : ''}> ${s.label}${s.cuenta(a) && s.cuenta(a) !== true ? ` <span style="font-size:11px;color:var(--text-3)">cuenta ${axH(s.cuenta(a))}</span>` : ''}</label>`).join('')}
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button class="btn-sm" style="flex:1;padding:9px" onclick="document.getElementById('ax-modal').remove()">Cancelar</button>
+      <button class="btn-primary" style="flex:1" onclick="axGuardarServicios(${a.id})">Guardar</button>
+    </div></div>`;
+  document.body.appendChild(m);
+}
+async function axGuardarServicios(id){
+  const val = [...document.querySelectorAll('.ax-serv-chk:checked')].map(x => x.value).join(',');
+  const { error } = await db.from('alquileres').update({ servicios: val }).eq('id', id);
+  if(error){ showToast('Error: ' + error.message); return; }
+  const a = axAlq.find(x => x.id === id); if(a) a.servicios = val;
+  document.getElementById('ax-modal')?.remove();
+  showToast('Servicios guardados ✓');
+  renderAlquileres();
+}
+
 // ---------- acciones ----------
 function axCambiarMes(delta){
   const [m, y] = axPeriodo.split('-').map(Number);
@@ -995,7 +1187,7 @@ async function axAsegurarPago(a){
   if(p) return p;
   const { data, error } = await db.from('pagos_mensuales').insert({
     alquiler_id: a.id, periodo: axPeriodo, etapa: 'sin_avisar', estado: 'pendiente',
-    monto_esperado: axCalculoMes(a).total, moneda: axEsUSD(a) ? 'USD' : 'ARS',
+    monto_esperado: axTotalMes(a), moneda: axEsUSD(a) ? 'USD' : 'ARS',
   }).select().single();
   if(error){ showToast('Error: ' + error.message); return null; }
   axPagos.push(data);
@@ -1021,14 +1213,14 @@ async function axSetEtapa(id, etapa, desdeSelector, enGrupo){
     if(p.estado === 'pagado' || p.estado === 'pago-pendiente') upd.estado = 'pendiente';
   }
   if(etapa === 'avisado'){
-    Object.assign(upd, { avisado_at: ahora, fecha_envio: ahora, monto_esperado: c.total,
+    Object.assign(upd, { avisado_at: ahora, fecha_envio: ahora, monto_esperado: axTotalMes(a),
       mensaje_wa: document.getElementById(`ax-msg-${id}`)?.value || axMsgEditado[id] || axMensaje(a) });
     if(!p.estado || p.estado === 'pendiente') upd.estado = 'pago-pendiente';
     if(desdeSelector) Object.assign(upd, { pagado_at: null, rendido_at: null, estado: 'pago-pendiente', monto_cobrado: null });
   }
   if(etapa === 'pagado'){
     Object.assign(upd, { pagado_at: ahora, estado: 'pagado', fecha_pago: p.fecha_pago || axISO(new Date()),
-      monto_cobrado: Math.max(Number(p.monto_cobrado) || 0, c.total), monto_esperado: c.total });
+      monto_cobrado: Math.max(Number(p.monto_cobrado) || 0, axTotalMes(a)), monto_esperado: axTotalMes(a) });
     if(desdeSelector) upd.rendido_at = null;
   }
   if(etapa === 'rendido') Object.assign(upd, { rendido_at: ahora });
@@ -1125,7 +1317,7 @@ async function axConfirmarICL(ids){
     axAjustes = axAjustes.filter(x => !(x.alquiler_id === a.id && x.periodo === axPeriodo)).concat(aj);
     const p = axPagoDe(a.id);
     if(p && axEtapa(p) === 'sin_avisar'){
-      const monto = axCalculoMes(a).total;
+      const monto = axTotalMes(a);
       await db.from('pagos_mensuales').update({ monto_esperado: monto }).eq('id', p.id);
       p.monto_esperado = monto;
     }
