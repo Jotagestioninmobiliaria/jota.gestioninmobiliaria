@@ -537,6 +537,7 @@ function renderAlquileres(){
     <div class="toolbar" style="flex-wrap:wrap">
       <div class="search-wrap"><span class="search-icon">⌕</span><input id="ax-buscar" placeholder="Buscar unidad, inquilino, propietario..." value="${axH(axBusqueda)}" oninput="axBusqueda=this.value;axRenderLista()"></div>
       ${chip('', 'Todos')}${chip('sin_avisar','Sin avisar',tot.etapas.sin_avisar)}${chip('avisado','Avisados',tot.etapas.avisado)}${tot.etapas.parcial ? chip('parcial','Pago parcial',tot.etapas.parcial) : ''}${chip('pagado','Pagados',tot.etapas.pagado)}${chip('rendido','Rendidos',tot.etapas.rendido)}${chip('sin_tel','📵 Sin teléfono',sinTel)}${chip('deuda','💸 Con deuda',tot.deudores)}
+      <button class="btn-primary" onclick="axEnviarTodos()" title="Abre los WhatsApp de los que faltan avisar, uno tras otro" style="padding:6px 12px;font-size:12px;margin-left:auto">▶ Enviar todos (${axColaArmar().length})</button>
       <label style="font-size:12px;color:var(--text-2);display:flex;align-items:center;gap:5px;cursor:pointer"><input type="checkbox" ${axSoloAumento?'checked':''} onchange="axSoloAumento=this.checked;renderAlquileres()"> Solo con aumento</label>
     </div>
     <div style="font-size:11px;color:var(--text-3);margin:-4px 0 12px">Atajos: ↑ ↓ moverse · Enter abrir · W WhatsApp · A avisado · P pagado</div>
@@ -1166,6 +1167,75 @@ async function axGuardarServicios(id){
   renderAlquileres();
 }
 
+// ---------- envío en serie de los WhatsApp del mes ----------
+// Un WhatsApp por inquilino (con todas sus unidades), de los que están "Sin avisar" en la lista que se ve.
+let axCola = [], axColaI = 0;
+function axColaArmar(){
+  const vistos = new Set(), cola = [];
+  axFiltrar(axUnidadesTab(axTab).filter(axActiva)).forEach(a => {
+    if(vistos.has(a.id)) return;
+    const grupo = axGrupoInquilino(a);
+    grupo.forEach(x => vistos.add(x.id));
+    if(axTelGrupo(a) && grupo.some(x => axEtapa(axPagoDe(x.id)) === 'sin_avisar')) cola.push(a.id);
+  });
+  return cola;
+}
+function axEnviarTodos(){
+  if(!axSchemaOK){ showToast('Primero hay que correr el script SQL'); return; }
+  axCola = axColaArmar(); axColaI = 0;
+  if(axCola.length === 0){ showToast('No hay WhatsApp pendientes en esta lista (o les falta teléfono)'); return; }
+  // Si quedan aumentos sin confirmar, los mensajes saldrían con el importe viejo
+  const sinConfirmar = axUnidadesTab(axTab).filter(axActiva).filter(a => axAumentoCobro(a, axPeriodo))
+    .map(a => axCalculoICL(a)).filter(c => c && !c.confirmado && !c.error && !c.info && !c.incluido).length;
+  if(sinConfirmar && !confirm(`Hay ${sinConfirmar} aumento${sinConfirmar !== 1 ? 's' : ''} ICL sin confirmar en esta pestaña: esos WhatsApp saldrían con el importe anterior.\n\n¿Enviar igual? (Cancelar para confirmarlos primero)`)) return;
+  axColaRender();
+}
+function axColaRender(){
+  document.getElementById('ax-modal')?.remove();
+  if(axColaI >= axCola.length){ showToast(`Listo: ${axCola.length} WhatsApp enviados ✓`); renderAlquileres(); return; }
+  const a = axAlq.find(x => x.id === axCola[axColaI]), grupo = axGrupoInquilino(a);
+  const msg = axMsgEditado[a.id] ?? axMensaje(a);
+  const sinTel = axFiltrar(axUnidadesTab(axTab).filter(axActiva)).filter(x => !axTelGrupo(x) && axEtapa(axPagoDe(x.id)) === 'sin_avisar').length;
+  const m = document.createElement('div');
+  m.id = 'ax-modal';
+  m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px';
+  m.innerHTML = `<div style="background:var(--surface);border-radius:var(--radius);width:100%;max-width:560px;padding:20px 22px;max-height:92vh;overflow:auto">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px">
+      <div style="font-family:'DM Serif Display',serif;font-size:18px">Envío en serie · ${axColaI + 1} de ${axCola.length}</div>
+      <div style="font-size:12px;color:var(--text-3)">${axFmtPeriodo(axPeriodo)}</div>
+    </div>
+    <div style="height:4px;background:var(--border);border-radius:2px;margin:8px 0 12px"><div style="height:4px;width:${Math.round(axColaI / axCola.length * 100)}%;background:var(--green);border-radius:2px"></div></div>
+    <div style="font-size:14px;font-weight:500">${axH(a.inquilino)}</div>
+    <div style="font-size:12px;color:var(--text-3);margin-bottom:8px">${grupo.map(x => axH(axNombreUnidad(x))).join(' · ')}</div>
+    <textarea id="ax-cola-msg" oninput="axMsgEditado[${a.id}]=this.value" style="width:100%;min-height:220px;padding:10px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:12px;line-height:1.45;box-sizing:border-box;resize:vertical">${axH(msg)}</textarea>
+    <div style="font-size:11px;color:var(--text-3);margin:6px 0 10px">1) Tocá <b>Abrir WhatsApp</b> y enviá el mensaje (adjuntá las boletas si corresponde). 2) Volvé acá y tocá <b>Enviado</b>: lo marca como avisado y abre el siguiente.${sinTel ? ` · ${sinTel} sin teléfono no están en la lista.` : ''}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button onclick="axColaAbrir()" style="flex:1;padding:10px;background:#25D366;color:white;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">💬 Abrir WhatsApp</button>
+      <button class="btn-primary" style="flex:1" onclick="axColaListo()">✓ Enviado${axColaI + 1 < axCola.length ? ', abrir el siguiente' : ''}</button>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button class="btn-sm" style="flex:1" onclick="axColaI++;axColaRender()">Saltear este</button>
+      <button class="btn-sm" style="flex:1" onclick="document.getElementById('ax-modal').remove();renderAlquileres()">Terminar</button>
+    </div></div>`;
+  document.body.appendChild(m);
+}
+function axColaURL(id, texto){
+  const a = axAlq.find(x => x.id === id);
+  const msg = texto ?? axMsgEditado[id] ?? axMensaje(a);
+  return `https://wa.me/${axTelGrupo(a)}?text=${encodeURIComponent(msg)}`;
+}
+// Se usa siempre la misma pestaña de WhatsApp para no llenar el navegador de pestañas
+function axColaAbrir(){ window.open(axColaURL(axCola[axColaI], document.getElementById('ax-cola-msg')?.value), 'ax-whatsapp'); }
+async function axColaListo(){
+  const id = axCola[axColaI];
+  axMsgEditado[id] = document.getElementById('ax-cola-msg')?.value ?? axMsgEditado[id];
+  axColaI++;
+  // El siguiente se abre ya (si se espera a guardar, el navegador bloquea la ventana)
+  if(axColaI < axCola.length) window.open(axColaURL(axCola[axColaI]), 'ax-whatsapp');
+  axColaRender();
+  await axSetEtapa(id, 'avisado', false, false, true);
+}
+
 // ---------- acciones ----------
 function axCambiarMes(delta){
   const [m, y] = axPeriodo.split('-').map(Number);
@@ -1194,7 +1264,7 @@ async function axAsegurarPago(a){
   return data;
 }
 
-async function axSetEtapa(id, etapa, desdeSelector, enGrupo){
+async function axSetEtapa(id, etapa, desdeSelector, enGrupo, silencioso){
   if(!axSchemaOK){ showToast('Primero hay que correr el script SQL'); return; }
   const a = axAlq.find(x => x.id === id); if(!a) return;
   const orden = ['sin_avisar','avisado','parcial','pagado','rendido'];
@@ -1228,6 +1298,7 @@ async function axSetEtapa(id, etapa, desdeSelector, enGrupo){
   if(error){ showToast('Error: ' + error.message); return; }
   Object.assign(p, upd);
   if(enGrupo) return;
+  if(silencioso){ renderAlquileres(); return; }
   showToast(`${axNombreUnidad(a)} → ${AX_ETAPAS[etapa].label}`);
   renderAlquileres();
   document.getElementById(`ax-row-${id}`)?.focus({ preventScroll: true });
