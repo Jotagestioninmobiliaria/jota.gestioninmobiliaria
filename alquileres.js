@@ -165,7 +165,11 @@ function axDeudaItems(a){
     .forEach(p => items.push({ tipo: 'pago', ref: p, periodo: p.periodo, concepto: 'Alquiler', saldo: axPagoSaldo(p) }));
   axDeudas.filter(d => d.alquiler_id === a.id && axPeriodoNum(d.periodo) < hoy && Math.round(Number(d.monto) - (Number(d.pagado) || 0)) > 0)
     .forEach(d => items.push({ tipo: 'deuda', ref: d, periodo: d.periodo, concepto: d.concepto || 'Alquiler', detalle: d.detalle, saldo: Math.round(Number(d.monto) - (Number(d.pagado) || 0)) }));
-  items.forEach(it => { Object.assign(it, axInteresItem(a, it.ref, it.periodo, it.concepto, it.saldo)); it.usd = usd; it.total = it.saldo + it.interes; });
+  items.forEach(it => {
+    Object.assign(it, axInteresItem(a, it.ref, it.periodo, it.concepto, it.saldo)); it.usd = usd; it.total = it.saldo + it.interes;
+    // Meses de interés que se cobran ahora (si parte ya venía incluida o pagada, son menos que los de atraso)
+    if(it.interes && it.saldo) it.meses = Math.max(1, Math.round(it.interes / (it.saldo * it.tasa)));
+  });
   return items.sort((x, y) => axPeriodoNum(x.periodo) - axPeriodoNum(y.periodo) || AX_CONCEPTOS.indexOf(x.concepto) - AX_CONCEPTOS.indexOf(y.concepto));
 }
 function axDeudaTotal(a){ return axDeudaItems(a).reduce((s, it) => s + it.total, 0); }
