@@ -309,7 +309,7 @@ function axBloquePago(unidades){
       + `TOTAL a depositar a ${prop.titular || prop.nombre} ${axPesos(total - honor)}.-\n${banco()}`
       + `\nTOTAL a depositar a MAO Propiedades ${axPesos(honor)}.- (honorarios inmobiliarios)\n${AX_MAO_PAGO}\n`;
   }
-  if(tieneBanco) return `\n${conDeuda ? T + ' — depositar a' : 'TOTAL a depositar a'} ${prop.titular || prop.nombre} ${axMonto(total, usd)}.-\n${banco()}`;
+  if(tieneBanco) return conDeuda ? `\n${T} ${axMonto(total, usd)}.-\nDepositar a ${prop.titular || prop.nombre}\n${banco()}` : `\nTOTAL a depositar a ${prop.titular || prop.nombre} ${axMonto(total, usd)}.-\n${banco()}`;
   if(axTabDe(a) === 'prop') return `\n${T} ${axMonto(total, usd)}.-\n${AX_MAO_PAGO}\n`;
   return `\n${T} ${axMonto(total, usd)}.-\n[Completar datos de pago de ${a.propietario || 'propietario'}]\n`;
 }
